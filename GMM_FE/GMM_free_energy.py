@@ -1,6 +1,7 @@
 import numpy as np
 import GMM_FE.GMM as GMM
 import GMM_FE.cross_validation as CV
+import GMM_FE.FE_landscape_clustering as FE_cluster
 import matplotlib
 import matplotlib.pyplot as plt
 
@@ -12,21 +13,21 @@ class free_energy(object):
 		Class for computing free energy landscape in [kcal/mol] using probabilistic PCA.
 		- observed_data has dimensionality [N x d]
 		"""
-		self.data = data
+		self.data_ = data
 		self.shuffle_data = shuffle_data
-		self.n_splits = n_splits
-		self.n_iterations = n_iterations
+		self.n_splits_ = n_splits
+		self.n_iterations_ = n_iterations
 
 		self.min_n_components = min_n_components
 		self.max_n_components = max_n_components
 
-		self.FE_points = None
-		self.FE_landscape = None
-		self.coords = None
+		self.FE_points_ = None
+		self.FE_landscape_ = None
+		self.coords_ = None
 
-		self.labels = None
-		self.cluster_centers = None
-		self.pathways = None
+		self.labels_ = None
+		self.cluster_centers_ = None
+		self.pathways_ = None
 
 		if x_lims is not None:
 			self.x_lim = x_lims
@@ -41,7 +42,7 @@ class free_energy(object):
 				self.x_lim = [[data.min(),data.max()]]
 				self.n_dims = 1
 
-		self.temperature = temperature # [K]
+		self.temperature_ = temperature # [K]
 		self.boltzmann_constant = 0.0019872041; # [kcal/(mol K)]
 		self.gmm = None
 		self.nx = n_grids
@@ -72,7 +73,7 @@ class free_energy(object):
 
 	def _free_energy(self,density):
 		density[density < 1e-8] = 1e-8
-		FE = -self.temperature * self.boltzmann_constant * np.log(density)
+		FE = -self.temperature_ * self.boltzmann_constant * np.log(density)
 		return FE
 
 	def estimate_standard_error(self):
@@ -81,7 +82,7 @@ class free_energy(object):
 
 	def _fit_FE(self, data):
 
-		train_inds, val_inds = CV.split_train_validation(data, self.n_splits, self.shuffle_data)
+		train_inds, val_inds = CV.split_train_validation(data, self.n_splits_, self.shuffle_data)
 
 		best_loglikelihood = -np.inf
 		best_n_components = self.min_n_components
@@ -92,7 +93,7 @@ class free_energy(object):
 				print('# Components = '+str(n_components))
 				self.gmm = GMM.GaussianMixture(n_components=n_components)
 				loglikelihood = 0
-				for i_split in range(self.n_splits):
+				for i_split in range(self.n_splits_):
 					training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
 
 					self.gmm.fit(training_data)
@@ -105,7 +106,7 @@ class free_energy(object):
 		print('Estimating final density.')
 		# Estimate FE with best number of components
 		best_loglikelihood = -np.inf
-		for i_iter in range(self.n_iterations):
+		for i_iter in range(self.n_iterations_):
 			self.gmm = GMM.GaussianMixture(n_components=best_n_components)
 			self.gmm.fit(data)
 			loglikelihood = self.gmm.loglikelihood(data)
@@ -124,9 +125,9 @@ class free_energy(object):
 		"""
 
 		if self.n_dims == 1:
-			FE_points = self._fit_FE(self.data[:,np.newaxis])
+			FE_points = self._fit_FE(self.data_[:,np.newaxis])
 		else:
-			FE_points = self._fit_FE(self.data)
+			FE_points = self._fit_FE(self.data_)
 		
 		print('Evaluating density in landscape')
 		coords, density = self.density_landscape()
@@ -137,11 +138,21 @@ class free_energy(object):
 		FE_landscape = FE_landscape-np.min(FE_landscape)
 		FE_points = FE_points-np.min(FE_landscape)
 
-		self.FE_points = FE_points
-		self.FE_landscape = FE_landscape
-		self.coords = coords
+		self.FE_points_ = FE_points
+		self.FE_landscape_ = FE_landscape
+		self.coords_ = coords
 
 		return coords, FE_landscape, FE_points
+	
+	def cluster(self, points, free_energies, eval_points=None):
+		"""
+		Cluster points according to estimated density.
+		"""
+		print('Clustering free energy landscape...')
+		cl = FE_cluster.landscape_clustering()
+		self.labels_ = cl.cluster(self.gmm, points, eval_points=None)
+		#self.cluster_centers_ = cl.get_cluster_representative(points, self.labels_, free_energies)
+		return self.labels_, self.cluster_center_
 
 	def visualize(self,title="Free energy landscape", fontsize=22, savefig=True, xlabel='x', ylabel='y', vmax=7.5):
 		# Set custom colormaps
@@ -155,33 +166,34 @@ class free_energy(object):
 		ax = fig.add_subplot(1, 1, 1)
 
 		# Plot free energy landscape
-		self.FE_landscape[self.FE_landscape > vmax+0.5] = vmax+0.5
+		self.FE_landscape_[self.FE_landscape_ > vmax+0.5] = vmax+0.5
 
 		if self.n_dims == 2:
-			plt.contourf(self.coords[0], self.coords[1], self.FE_landscape, 15, cmap=my_cmap, vmin=0, vmax=vmax)
+			plt.contourf(self.coords_[0], self.coords_[1], self.FE_landscape_, 15, cmap=my_cmap, vmin=0, vmax=vmax)
 			cb=plt.colorbar(label='[kcal/mol]')
 			cb.ax.tick_params(labelsize=fontsize-2)
-			ax.set_ylim([self.coords[1].min(), self.coords[1].max()])
+			ax.set_ylim([self.coords_[1].min(), self.coords_[1].max()])
 			plt.ylabel(ylabel, fontsize=fontsize - 2)
 		elif self.n_dims == 1:
-			plt.plot(self.coords[0], self.FE_landscape, linewidth=2,color='k')
+			plt.plot(self.coords_[0], self.FE_landscape_, linewidth=2,color='k')
 			plt.ylabel('Free energy [kcal/mol]',fontsize=fontsize-2)
 		else:
 			print('Plotting does not support > 2 dimensions')
 			return
-		ax.set_xlim([self.coords[0].min(), self.coords[0].max()])
+		ax.set_xlim([self.coords_[0].min(), self.coords_[0].max()])
+		
 		# Plot projected data points
-		if self.labels is not None:
-			ax.scatter(data[0, :], data[1, :], s=30, c=self.labels, edgecolor='k', cmap=my_cmap, label='Cluster assignment')
+		if self.labels_ is not None:
+			ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=self.labels_, edgecolor='k', cmap=my_cmap, label='Cluster assignment')
 
 		# Plot minimum pathways between states
-		if self.pathways is not None:
-			for p in self.pathways:
+		if self.pathways_ is not None:
+			for p in self.pathways_:
 				ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
 
 		# Plot cluster centers in landscape
-		if self.cluster_centers is not None:
-			ax.scatter(self.cluster_centers[0, :], self.cluster_centers[1, :], c=np.arange(self.cluster_centers.shape[1]),
+		if self.cluster_centers_ is not None:
+			ax.scatter(self.cluster_centers_[0, :], self.cluster_centers_[1, :], c=np.arange(self.cluster_centers_.shape[1]),
 					   cmap=my_cmap, marker='s', s=50, linewidth=2, edgecolor='w', label='Cluster centers')
 
 		plt.title(title, fontsize=fontsize)
