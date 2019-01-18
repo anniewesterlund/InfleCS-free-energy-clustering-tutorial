@@ -15,7 +15,6 @@ class cluster_density(object):
 		n_points = distance_matrix.shape[0]
 		sort_inds = np.argsort(distance_matrix,axis=1)
 	
-		all_inds = np.arange(n_points)
 		graph = np.zeros((n_points,n_points))
 	
 		for i in range(n_points):
@@ -50,7 +49,7 @@ class cluster_density(object):
 		graph = graph[is_FE_min,:]
 		graph = graph[:,is_FE_min]
 	
-		return graph;
+		return graph
 
 	def _find_connected_components(self,graph):
 		# Assign points to connected components
@@ -61,9 +60,9 @@ class cluster_density(object):
 		is_visited = np.zeros(n_points)	
 		all_inds = np.arange(n_points)
 	
-		iComponent = 1
+		i_component = 0
 		while np.sum(is_visited) < is_visited.shape[0]:
-			iComponent += 1
+			i_component += 1
 			queue = []
 			# get next unvisited point
 			unvisited_points = all_inds[is_visited==0]
@@ -73,14 +72,14 @@ class cluster_density(object):
 				current_point = queue.pop(0)
 				if is_visited[current_point] == 0:
 					is_visited[current_point] = 1
-					component_indices[current_point] = iComponent
+					component_indices[current_point] = i_component
 	
 					# get unvisited neighbors 
 					neighbors = all_inds[graph[current_point,:] > 0]
-					for iNeighbor in neighbors:
-						if is_visited[iNeighbor] == 0:
-							queue.append(iNeighbor)
-	
+					for neighbor in neighbors:
+						if is_visited[neighbor] == 0:
+							queue.append(neighbor)
+
 		return component_indices
 	
 	def _data_cluster_indices(self, point_distances, cluster_indices_eval_points):
@@ -106,7 +105,7 @@ class cluster_density(object):
 		all_cl_inds = np.zeros(self.eval_points.shape[0])
 		all_cl_inds[is_FE_min] = cluster_indices_eval_points
 		if self.points is not None:
-			cluster_indices = self._data_cluster_indices(cdist(data,self.points),all_cl_inds)
+			cluster_indices = self._data_cluster_indices(cdist(self.points,self.eval_points),all_cl_inds)
 		else:
 			cluster_indices = all_cl_inds
 		

@@ -150,9 +150,19 @@ class free_energy(object):
 		"""
 		print('Clustering free energy landscape...')
 		cl = FE_cluster.landscape_clustering()
-		self.labels_ = cl.cluster(self.gmm, points, eval_points=None)
-		#self.cluster_centers_ = cl.get_cluster_representative(points, self.labels_, free_energies)
-		return self.labels_, self.cluster_center_
+
+		if eval_points is not None:
+			if len(points[0].shape)>1:
+				points = np.asarray([np.ravel(points[0]),np.ravel(points[1])]).T
+
+		self.labels_ = cl.cluster(self.gmm, points, eval_points=eval_points)
+
+		if eval_points is not None:
+			self.cluster_centers_ = cl.get_cluster_representative(eval_points, self.labels_, free_energies)
+		else:
+			self.cluster_centers_ = cl.get_cluster_representative(points, self.labels_, free_energies)
+		print('Done clustering.')
+		return self.labels_, self.cluster_centers_
 
 	def visualize(self,title="Free energy landscape", fontsize=22, savefig=True, xlabel='x', ylabel='y', vmax=7.5):
 		# Set custom colormaps
@@ -184,24 +194,25 @@ class free_energy(object):
 		
 		# Plot projected data points
 		if self.labels_ is not None:
-			ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=self.labels_, edgecolor='k', cmap=my_cmap, label='Cluster assignment')
-
+			ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67,0.67,0.65], edgecolor='', label='Transition point')
+			ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0], edgecolor='k', cmap=my_cmap, label='Intermediate state')
+			plt.legend()
 		# Plot minimum pathways between states
 		if self.pathways_ is not None:
 			for p in self.pathways_:
 				ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
+			plt.legend()
 
 		# Plot cluster centers in landscape
 		if self.cluster_centers_ is not None:
-			ax.scatter(self.cluster_centers_[0, :], self.cluster_centers_[1, :], c=np.arange(self.cluster_centers_.shape[1]),
-					   cmap=my_cmap, marker='s', s=50, linewidth=2, edgecolor='w', label='Cluster centers')
-
+			ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=30, linewidth=2, facecolor='',edgecolor='w', label='Cluster centers')
+			plt.legend()
 		plt.title(title, fontsize=fontsize)
 		plt.xlabel(xlabel, fontsize=fontsize - 2)
 		plt.rc('xtick', labelsize=fontsize-2)
 		plt.rc('ytick', labelsize=fontsize-2)
 
-		plt.legend()
+
 
 		if savefig:
 			plt.savefig(title + '.eps')

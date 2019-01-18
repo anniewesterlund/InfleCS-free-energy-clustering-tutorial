@@ -20,7 +20,6 @@ class landscape_clustering():
 		all_inds = np.arange(n_points)
 		for i_cluster in range(1,n_components):
 			cluster_inds = all_inds[labels == i_cluster]
-
 			min_FE_inds[i_cluster] = cluster_inds[np.argmin(free_energies[cluster_inds])]
 
 		self.cluster_centers_ = min_FE_inds.astype(int)
