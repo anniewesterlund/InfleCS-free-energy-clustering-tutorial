@@ -53,7 +53,7 @@ class GaussianMixture():
 		"""
 		n_points = x.shape[0]
 		gamma = np.zeros((self.n_components_,n_points));
-				
+
 		for i_component in range(self.n_components_):
 			gamma[i_component,:] = self.weights_[i_component]*multivariate_normal.pdf(x, mean=self.means_[i_component],
 		                                                              cov=self.covariances_[i_component])
@@ -73,7 +73,6 @@ class GaussianMixture():
 		"""
 		Update each component amplitude.
 		"""
-		n_points = x.shape[0]
 		self.weights_ = np.sum(gamma,axis=1)
 		
 		# Normalize Cat-distibution
