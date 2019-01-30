@@ -2,7 +2,7 @@ import numpy as np
 
 import GMM_FE.GMM as GMM
 import GMM_FE.cross_validation as CV
-import GMM_FE.ensemble_of_GMMs as eGMM
+import GMM_FE.mixture_of_landscapes as mol
 import GMM_FE.FE_landscape_clustering as FE_cluster
 
 import matplotlib
@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 class free_energy(object):
 
 	def __init__(self, data, min_n_components=8, max_n_components=None, x_lims=None, temperature=300.0, n_grids=50,
-				 n_splits=3, shuffle_data=False, n_iterations=1, covergence_tol=1e-6, ensemble_of_GMMs=False):
+				 n_splits=3, shuffle_data=False, n_iterations=1, covergence_tol=1e-4, mixture_of_landscapes=False):
 		"""
 		Class for computing free energy landscape in [kcal/mol] using probabilistic PCA.
 		- observed_data has dimensionality [N x d]
@@ -21,7 +21,9 @@ class free_energy(object):
 		self.n_splits_ = n_splits
 		self.n_iterations_ = n_iterations
 		self.convergence_tol_ = covergence_tol
-		self.ensemble_of_GMMs_ = ensemble_of_GMMs
+		self.mixture_of_landscapes_ = mixture_of_landscapes
+
+
 
 		self.min_n_components = min_n_components
 		self.max_n_components = max_n_components
@@ -60,9 +62,9 @@ class free_energy(object):
 		print('   n_iterations = ' + str(n_iterations))
 		print('   n_grids = ' + str(n_grids))
 		print('   covergence_tol = ' + str(covergence_tol))
-		print('   ensemble_of_GMMs = ' + str(ensemble_of_GMMs))
-		print('   x_lims (axes limits) = ' + str(self.x_lim))
-		print('   temperature = ' + str(temperature)+' K')
+		print('   mixture_of_landscapes = ' + str(mixture_of_landscapes))
+		print('   axes limits (x_lim) = ' + str(self.x_lim))
+		print('   temperature = ' + str(temperature))
 		print('   min_n_components = ' + str(min_n_components))
 		print('   max_n_components = ' + str(max_n_components))
 		print('*--------------------------------------------------------------------------------*')
@@ -113,36 +115,36 @@ class free_energy(object):
 		# Extract test set from the dataset
 		n_points_test = int(0.05*data.shape[0])
 		test_data = data[-n_points_test::,:]
-		input_data = np.copy(data)
+		data_orig = data
 		data = np.copy(data[0:-n_points_test, :])
 
-		if self.ensemble_of_GMMs_:
-			print('Estimating density with ensembles of GMMs.')
+		print('Estimating density with GMM.')
 
-			self.density_est_ = eGMM.ensemble_of_GMMs(data, self.min_n_components, self.max_n_components, self.convergence_tol_)
-			self.density_est_.fit()
-			density = self.density_est_.density(input_data)
-		else:
-			print('Estimating density with GMM.')
+		list_of_GMMs = []
+		list_of_validation_data = []
 
-			list_of_GMMs = []
-			list_of_validation_data = []
+		# Get indices of training and validation datasets
+		train_inds, val_inds = CV.split_train_validation(data, self.n_splits_, self.shuffle_data)
 
-			# Get indices of training and validation datasets
-			train_inds, val_inds = CV.split_train_validation(data, self.n_splits_, self.shuffle_data)
+		# Determine number of components with k-fold cross-validation,
+		# or store all estimated densities and then weight together.
+		if self.max_n_components is not None:
+			for n_components in range(self.min_n_components,self.max_n_components+1):
+				print('# Components = '+str(n_components))
+				gmm = GMM.GaussianMixture(n_components=n_components,convergence_tol=self.convergence_tol_)
 
-			# Determine number of components with k-fold cross-validation,
-			# or store all estimated densities and then weight together.
-			if self.max_n_components is not None:
-				for n_components in range(self.min_n_components,self.max_n_components+1):
-					print('# Components = '+str(n_components))
-					gmm = GMM.GaussianMixture(n_components=n_components,convergence_tol=self.convergence_tol_)
+				loglikelihood = 0
+				for i_split in range(self.n_splits_):
+					training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
 
-					loglikelihood = 0
-					for i_split in range(self.n_splits_):
-						training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
-
-						# Train model on the current training data
+					# Train model on the current training data
+					if self.mixture_of_landscapes_:
+						for i_iter in range(self.n_iterations_):
+							gmm.fit(training_data)
+							# Store density model and validation data
+							list_of_GMMs.append(gmm)
+							list_of_validation_data.append(validation_data)
+					else:
 						gmm.fit(training_data)
 						# Check log-likelihood of validation data
 						loglikelihood += gmm.loglikelihood(validation_data)
@@ -150,8 +152,19 @@ class free_energy(object):
 						if loglikelihood > best_loglikelihood:
 							best_n_components = n_components
 							best_loglikelihood = loglikelihood
+		if self.mixture_of_landscapes_:
+			print('Weighting together all density estimators.')
+			if  self.max_n_components is None:
+				gmm = GMM.GaussianMixture(n_components=self.min_n_components,convergence_tol=self.convergence_tol_)
+				gmm.fit(data)
+				list_of_GMMs.append(gmm)
 
-			print('Estimating final density with '+str(best_n_components)+' components.')
+			# Fit mixture of density estimators using the validation data
+			self.density_est_ = mol.LandscapeMixture(list_of_validation_data,list_of_GMMs)
+			self.density_est_.fit()
+			density = self.density_est_.density(data_orig)
+		else:
+			print('Estimating final density.')
 			# Estimate FE with best number of components
 			best_loglikelihood = -np.inf
 			for i_iter in range(self.n_iterations_):
@@ -160,7 +173,7 @@ class free_energy(object):
 				loglikelihood = self.density_est_.loglikelihood(data)
 				if  loglikelihood > best_loglikelihood:
 					best_loglikelihood = loglikelihood
-					density = self.density_est_.density(input_data)
+					density = self.density_est_.density(data_orig)
 
 		# Compute test set loglikelihood on the test set
 		self.test_set_loglikelihood = self.density_est_.loglikelihood(test_data)
@@ -199,7 +212,7 @@ class free_energy(object):
 		Cluster points according to estimated density.
 		"""
 		print('Clustering free energy landscape...')
-		cl = FE_cluster.landscape_clustering(self.ensemble_of_GMMs_)
+		cl = FE_cluster.landscape_clustering(self.mixture_of_landscapes_)
 
 		if eval_points is not None:
 			if len(points[0].shape)>1:
@@ -243,30 +256,29 @@ class free_energy(object):
 			print('Plotting does not support > 2 dimensions')
 			return
 		ax.set_xlim([self.coords_[0].min(), self.coords_[0].max()])
-
+		
 		# Plot projected data points
 		if show_data:
-			# Plot projected data points
-			if self.labels_ is not None:
-				ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67,0.67,0.65],
-						   edgecolor='', label='Transition point', alpha=0.3)
-				ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0],
-						   edgecolor='k', cmap=my_cmap, label='Intermediate state')
-				plt.legend()
-			else:
-				ax.scatter(self.data_[:, 0], self.data_[:, 1], s=10, c=[0.67, 0.67, 0.65], edgecolor='', alpha=0.3)
+			ax.scatter(self.data_[:,0],self.data_[:,1],s=10,c=[0.67,0.67,0.65])
 
-			# Plot minimum pathways between states
-			if self.pathways_ is not None:
-				for p in self.pathways_:
-					ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
-				plt.legend()
+		# Plot projected data points
+		if self.labels_ is not None:
+			ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67,0.67,0.65],
+					   edgecolor='', label='Transition point', alpha=0.6)
+			ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0],
+					   edgecolor='k', cmap=my_cmap, label='Intermediate state')
+			plt.legend()
+		# Plot minimum pathways between states
+		if self.pathways_ is not None:
+			for p in self.pathways_:
+				ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
+			plt.legend()
 
-			# Plot cluster centers in landscape
-			if self.cluster_centers_ is not None:
-				ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=30,
-						   linewidth=2, facecolor='',edgecolor='w', label='Cluster centers')
-				plt.legend()
+		# Plot cluster centers in landscape
+		if self.cluster_centers_ is not None:
+			ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=30,
+					   linewidth=2, facecolor='',edgecolor='w', label='Cluster centers')
+			plt.legend()
 		plt.title(title, fontsize=fontsize)
 		plt.xlabel(xlabel, fontsize=fontsize - 2)
 		plt.rc('xtick', labelsize=fontsize-2)

@@ -3,7 +3,7 @@ from scipy.stats import multivariate_normal
 
 class GaussianMixture():
 	
-	def __init__(self,n_components=2, convergence_tol=1e-4):
+	def __init__(self,n_components=2, convergence_tol=1e-6):
 		self.n_components_ = n_components
 		self.weights_ = np.ones(n_components)/float(n_components)
 		self.means_ = np.zeros(n_components)
@@ -52,7 +52,7 @@ class GaussianMixture():
 		Perform expecation step
 		"""
 		n_points = x.shape[0]
-		gamma = np.zeros((self.n_components_,n_points));
+		gamma = np.zeros((self.n_components_,n_points))
 
 		for i_component in range(self.n_components_):
 			gamma[i_component,:] = self.weights_[i_component]*multivariate_normal.pdf(x, mean=self.means_[i_component],
@@ -98,7 +98,7 @@ class GaussianMixture():
 		for i_component in range(self.n_components_):
 			y = x - self.means_[i_component]
 			y2 = np.multiply(gamma[i_component,:,np.newaxis],y).T
-			self.covariances_[i_component] = y2.dot(y)/Nk[i_component] + 1e-7*np.eye(n_dims)
+			self.covariances_[i_component] = y2.dot(y)/Nk[i_component] + 1e-9*np.eye(n_dims)
 		return
 	
 	def density(self,x):
@@ -116,4 +116,4 @@ class GaussianMixture():
 		Compute log-likelihood.
 		"""
 		density = self.density(x)
-		return np.sum(density)
+		return np.mean(density)

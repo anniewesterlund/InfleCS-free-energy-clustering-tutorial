@@ -8,13 +8,13 @@ class LandscapeMixture(object):
         :param list_of_estimators:
         :param convergence_tol:
         """
-        self.estimator_list_ = list_of_estimators
+        self.GMM_list_ = list_of_estimators
         self.val_data_list_ = list_of_validation_data
         self.convergence_tol_ = convergence_tol
-        self.n_estimators_ = len(list_of_estimators)
+        self.n_models_ = len(list_of_estimators)
 
         # Initlialize weights
-        self.estimator_weights_ = 1.0 / self.n_estimators_ * np.ones(self.n_estimators_)
+        self.model_weights_ = 1.0 / self.n_models_ * np.ones(self.n_models_)
         return
 
     def fit(self):
@@ -25,15 +25,18 @@ class LandscapeMixture(object):
             self._maximization(gamma)
             prev_loglikelihood = loglikelihood
             loglikelihood = self.loglikelihood(self.val_data_list_, list_of_validation_data=True)
+
+        # Keep only models with non-zero weight
+        self._sparisify_model()
         return
 
     def _expectation(self):
         n_points = self.val_data_list_[0].shape[0]
 
-        gamma = np.zeros((self.n_estimators_, n_points))
+        gamma = np.zeros((self.n_models_, n_points))
 
-        for i_estimator in range(self.n_estimators_):
-            gamma[i_estimator, :] = self.estimator_weights_[i_estimator]*self.estimator_list_[i_estimator].density(self.val_data_list_[i_estimator])
+        for i_estimator in range(self.n_models_):
+            gamma[i_estimator, :] = self.model_weights_[i_estimator]*self.GMM_list_[i_estimator].density(self.val_data_list_[i_estimator])
 
         gamma /= np.sum(gamma, axis=0)
         return gamma
@@ -42,27 +45,55 @@ class LandscapeMixture(object):
         """
         Update density estimator weights.
         """
-        self.estimator_weights_ = np.sum(gamma, axis=1)
+        self.model_weights_ = np.sum(gamma, axis=1)
 
         # Normalize Cat-distibution
-        self.estimator_weights_ /= np.sum(self.estimator_weights_)
+        self.model_weights_ /= np.sum(self.model_weights_)
+
+        # Remove models with too low weight
+        self.model_weights_[self.model_weights_< 1e-4] = 0
+
+        # Normalize Cat-distibution again
+        self.model_weights_ /= np.sum(self.model_weights_)
+
+        return
+
+    def _sparisify_model(self):
+        """
+        Remove all models with zero-weights (done after converged optimization).
+        :return:
+        """
+        print('Removing zero-weighted models.')
+        n_models = np.sum(self.model_weights_>0)
+        new_weights = []
+        new_models = []
+
+        for i_model in range(self.n_models_):
+            if self.model_weights_[i_model] > 0:
+                new_weights.append(self.model_weights_[i_model])
+                new_models.append(self.GMM_list_[i_model])
+
+        self.n_models_ = n_models
+        self.GMM_list_ = new_models
+        self.model_weights_ = np.asarray(new_weights)
         return
 
     def density(self, x, list_of_validation_data=False):
         """
         Compute mixture of landscape density at the given points, x.
         x is either a numpy-array of size [n_samples x n_dims] or a list of
-        validation datasets with length [self.n_estimators_].
+        validation datasets with length [self.n_models_].
         """
 
         if list_of_validation_data:
             density = np.zeros(x[0].shape[0])
-            for i_estimator in range(self.n_estimators_):
-                density += self.estimator_weights_[i_estimator]*self.estimator_list_[i_estimator].density(x[i_estimator])
+            for i_estimator in range(self.n_models_):
+                density += self.model_weights_[i_estimator]*self.GMM_list_[i_estimator].density(x[i_estimator])
         else:
             density = np.zeros(x.shape[0])
-            for i_estimator in range(self.n_estimators_):
-                density += self.estimator_weights_[i_estimator]*self.estimator_list_[i_estimator].density(x)
+            for i_estimator in range(self.n_models_):
+                if self.model_weights_[i_estimator] > 0:
+                    density += self.model_weights_[i_estimator]*self.GMM_list_[i_estimator].density(x)
         return density
 
     def loglikelihood(self, x, list_of_validation_data=False):
