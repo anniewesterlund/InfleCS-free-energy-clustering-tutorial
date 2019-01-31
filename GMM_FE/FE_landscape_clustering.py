@@ -2,12 +2,13 @@ import numpy as np
 import GMM_FE.cluster_density as cluster
 from scipy.stats import multivariate_normal
 
-class landscape_clustering():
+class LandscapeClustering():
 
 	def __init__(self, ensemble_of_GMMs=False):
 		self.cluster_centers_ = None
 		self.labels_ = None
 		self.ensemble_of_GMMs = ensemble_of_GMMs
+		self.clusterer_ = None
 		return
 	
 	def get_cluster_representative(self, x, labels, free_energies):
@@ -21,8 +22,11 @@ class landscape_clustering():
 		all_inds = np.arange(n_points)
 		for i_cluster in range(1,n_clusters):
 			cluster_inds = all_inds[labels == i_cluster]
-			min_FE_inds[i_cluster-1] = cluster_inds[np.argmin(free_energies[cluster_inds])]
-
+			if cluster_inds.shape[0] > 0:
+				min_FE_inds[i_cluster-1] = cluster_inds[np.argmin(free_energies[cluster_inds])]
+			else:
+				min_FE_inds[i_cluster-1] = np.nan
+		
 		self.cluster_centers_ = min_FE_inds.astype(int)
 		return self.cluster_centers_
 
@@ -126,13 +130,13 @@ class landscape_clustering():
 				is_FE_min[i_point] = True
 		
 		return is_FE_min
-	
+
 	def cluster(self, density_models, points, eval_points=None):
 		# Indicate whether points are at free energy minimum or not
 		is_FE_min = self._Hessian_def(density_models, points)
 
 		# Cluster free energy landscape
-		cl = cluster.cluster_density(points, eval_points)
-		self.labels_ = cl.cluster_data(is_FE_min)
+		self.clusterer_ = cluster.ClusterDensity(points, eval_points)
+		self.labels_ = self.clusterer_.cluster_data(is_FE_min)
 		return self.labels_
 		

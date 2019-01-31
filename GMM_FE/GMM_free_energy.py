@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.distance import cdist
 
 import GMM_FE.GMM as GMM
 import GMM_FE.cross_validation as CV
@@ -8,7 +9,7 @@ import GMM_FE.FE_landscape_clustering as FE_cluster
 import matplotlib
 import matplotlib.pyplot as plt
 
-class free_energy(object):
+class FreeEnergy(object):
 
 	def __init__(self, data, min_n_components=8, max_n_components=None, x_lims=None, temperature=300.0, n_grids=50,
 				 n_splits=3, shuffle_data=False, n_iterations=1, covergence_tol=1e-6, ensemble_of_GMMs=False):
@@ -30,6 +31,7 @@ class free_energy(object):
 		self.FE_landscape_ = None
 		self.coords_ = None
 
+		self.cl_ = None # Clustering object
 		self.labels_ = None
 		self.cluster_centers_ = None
 		self.pathways_ = None
@@ -50,11 +52,12 @@ class free_energy(object):
 		self.temperature_ = temperature # [K]
 		self.boltzmann_constant = 0.0019872041 # [kcal/(mol K)]
 		self.density_est_ = None
+		self.min_FE_ = None
 		self.nx_ = n_grids
 
 		self.test_set_loglikelihood = None
 
-		print('*------------------Gaussian mixture model free energy estimator------------------*')
+		print('*----------------Gaussian mixture model free energy estimator----------------*')
 		print('   n_splits = '+str(n_splits))
 		print('   shuffle_data = ' + str(shuffle_data))
 		print('   n_iterations = ' + str(n_iterations))
@@ -65,13 +68,15 @@ class free_energy(object):
 		print('   temperature = ' + str(temperature)+' K')
 		print('   min_n_components = ' + str(min_n_components))
 		print('   max_n_components = ' + str(max_n_components))
-		print('*--------------------------------------------------------------------------------*')
+		print('*----------------------------------------------------------------------------*')
 		return
 
 	def density_landscape(self):
 
 		x = []
+		n_grids = []
 		for i_dim in range(self.n_dims):
+			n_grids.append(self.nx_)
 			x.append(np.linspace(self.x_lim[i_dim][0], self.x_lim[i_dim][1], self.nx_))
 
 		if self.n_dims == 1:
@@ -81,16 +86,19 @@ class free_energy(object):
 				densities[j_x] = self.density_est_.density(point[np.newaxis,:])
 			return x, densities
 
-		X, Y = np.meshgrid(*x)
-		densities = np.zeros((self.nx_,self.nx_))
+		coords = np.meshgrid(*x)
+		densities = np.zeros(n_grids)
 		
-		for i_x in range(self.nx_):
-
-			for j_x in range(self.nx_):
-				point = np.asarray([X[i_x,j_x], Y[i_x, j_x]])
-				densities[i_x,j_x] = self.density_est_.density(point[np.newaxis,:])
+		print('Density grid shape: '+str(densities.shape))
+		grid_points_flatten = []
+		for x in coords:
+			grid_points_flatten.append(np.ravel(x))
+		points = np.asarray(grid_points_flatten).T
 		
-		return [X, Y], densities
+		densities = self.density_est_.density(points)
+		densities = np.reshape(densities, n_grids)
+		
+		return coords, densities
 
 	def _free_energy(self,density):
 		density[density < 1e-8] = 1e-8
@@ -147,9 +155,9 @@ class free_energy(object):
 						# Check log-likelihood of validation data
 						loglikelihood += gmm.loglikelihood(validation_data)
 
-						if loglikelihood > best_loglikelihood:
-							best_n_components = n_components
-							best_loglikelihood = loglikelihood
+					if loglikelihood > best_loglikelihood:
+						best_n_components = n_components
+						best_loglikelihood = loglikelihood
 
 			print('Estimating final density with '+str(best_n_components)+' components.')
 			# Estimate FE with best number of components
@@ -185,34 +193,60 @@ class free_energy(object):
 		FE_landscape = self._free_energy(density)
 
 		# Shift to zero
-		FE_landscape = FE_landscape-np.min(FE_landscape)
-		FE_points = FE_points-np.min(FE_landscape)
-
+		self.min_FE_ = np.min(FE_landscape)
+		FE_landscape = FE_landscape-self.min_FE_
+		FE_points = FE_points-self.min_FE_
+		
 		self.FE_points_ = FE_points
 		self.FE_landscape_ = FE_landscape
 		self.coords_ = coords
 
 		return coords, FE_landscape, FE_points
+
+	def evaluate_free_energy(self,data):
+		"""
+		Evaluate the free energy of given data in the current free energy model.
+		"""
+		density = self.density_est_.density(data)
+		free_energy = self._free_energy(density)
+		if self.min_FE_ is not None:		
+			free_energy -= self.min_FE_
+		return free_energy
 	
-	def cluster(self, points, free_energies, eval_points=None):
+	def evaluate_clustering(self, points):
+		"""
+		Assign cluster indices to points based on precomputed density model clustering.
+		"""
+		if self.cl_ is not None and self.cl_.clusterer_ is not None:
+			labels = self.cl_.clusterer_.data_cluster_indices(cdist(points, self.cl_.clusterer_.grid_points_), self.cl_.clusterer_.grid_cluster_inds_)
+		return labels
+
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False):
 		"""
 		Cluster points according to estimated density.
 		"""
 		print('Clustering free energy landscape...')
-		cl = FE_cluster.landscape_clustering(self.ensemble_of_GMMs_)
+		self.cl_ = FE_cluster.LandscapeClustering(self.ensemble_of_GMMs_)
 
 		if eval_points is not None:
 			if len(points[0].shape)>1:
-				points = np.asarray([np.ravel(points[0]),np.ravel(points[1])]).T
+				tmp_points = []
+				for x in points:
+					tmp_points.append(np.ravel(x))
+				points = np.asarray(tmp_points).T
 
-		self.labels_ = cl.cluster(self.density_est_, points, eval_points=eval_points)
+		self.labels_ = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
 
 		if eval_points is not None:
-			self.cluster_centers_ = cl.get_cluster_representative(eval_points, self.labels_, free_energies)
+			self.cluster_centers_ = self.cl_.get_cluster_representative(eval_points, self.labels_, free_energies)
 		else:
-			self.cluster_centers_ = cl.get_cluster_representative(points, self.labels_, free_energies)
+			self.cluster_centers_ = self.cl_.get_cluster_representative(points, self.labels_, free_energies)
 		print('Done clustering.')
-		return self.labels_, self.cluster_centers_
+		
+		if return_center_coords:
+			return self.labels_, eval_points[self.cluster_centers_,:]
+		else:
+			return self.labels_, self.cluster_centers_
 
 	def visualize(self,title="Free energy landscape", fontsize=22, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False):
 		# Set custom colormaps

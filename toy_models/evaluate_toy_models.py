@@ -3,7 +3,7 @@ import toy_models as tm
 import GMM_FE
 import matplotlib.pyplot as plt
 
-class method_evaluator(object):
+class MethodEvaluator(object):
 
     def __init__(self, toy_model='GMM_2D', x_lims=None, n_grids=30):
 
@@ -73,11 +73,11 @@ class method_evaluator(object):
 
         # Create free energy estimators
         gmm_FE_CV = GMM_FE.free_energy(data, min_n_components=min_n_components, max_n_components=max_n_components,
-                                     x_lims=self.x_lims_, n_grids=self.n_grids_, mixture_of_landscapes=False,
+                                     x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=False,
                                      n_splits=n_splits, n_iterations=n_iterations)
 
         gmm_FE_mix_models = GMM_FE.free_energy(data, min_n_components=min_n_components, max_n_components=max_n_components,
-                                     x_lims=self.x_lims_, n_grids=self.n_grids_, mixture_of_landscapes=True,
+                                     x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=True,
                                      n_splits=n_splits, n_iterations=n_iterations)
 
         all_data = []

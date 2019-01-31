@@ -1,2 +1,3 @@
-from GMM_FE.GMM_free_energy_static_landscape_weighting import free_energy
-from GMM_FE.FE_landscape_clustering import landscape_clustering
+from GMM_FE.GMM_free_energy_static_landscape_weighting import FreeEnergy
+from GMM_FE.FE_landscape_clustering import LandscapeClustering
+from GMM_FE.stack_landscapes import LandscapeStacker

@@ -2,11 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
 
-class cluster_density(object):
+class ClusterDensity(object):
 
 	def __init__(self, points, eval_points=None):
-		self.eval_points=points
-		self.points = eval_points
+		self.grid_points_ = points
+		self.points_ = eval_points
+		self.grid_cluster_inds_ = None
 		return
 
 	def _construct_components(self,distance_matrix, is_FE_min):
@@ -82,7 +83,7 @@ class cluster_density(object):
 
 		return component_indices
 	
-	def _data_cluster_indices(self, point_distances, cluster_indices_eval_points):
+	def data_cluster_indices(self, point_distances, cluster_indices_eval_points):
 		"""
 		Set cluster indices according to the closest data point.
 		"""
@@ -98,15 +99,15 @@ class cluster_density(object):
 	def cluster_data(self, is_FE_min):
 		
 		# Construct and detect connected components
-		graph = self._construct_components(cdist(self.eval_points,self.eval_points), is_FE_min)
+		graph = self._construct_components(cdist(self.grid_points_,self.grid_points_), is_FE_min)
 		print('# Graph connections: '+str(np.sum(graph)))
-		cluster_indices_eval_points = self._find_connected_components(graph)
+		cluster_indices_grid_points = self._find_connected_components(graph)
 		
-		all_cl_inds = np.zeros(self.eval_points.shape[0])
-		all_cl_inds[is_FE_min] = cluster_indices_eval_points
-		if self.points is not None:
-			cluster_indices = self._data_cluster_indices(cdist(self.points,self.eval_points),all_cl_inds)
+		self.grid_cluster_inds_ = np.zeros(self.grid_points_.shape[0])
+		self.grid_cluster_inds_[is_FE_min] = cluster_indices_grid_points
+		if self.points_ is not None:
+			cluster_indices = self.data_cluster_indices(cdist(self.points_,self.grid_points_),self.grid_cluster_inds_)
 		else:
-			cluster_indices = all_cl_inds
+			cluster_indices = self.grid_cluster_inds_
 		
 		return cluster_indices
