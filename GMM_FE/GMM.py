@@ -115,5 +115,29 @@ class GaussianMixture():
 		"""
 		Compute log-likelihood.
 		"""
-		density = self.density(x)
+		density = np.log(self.density(x))
 		return np.mean(density)
+
+	def sample(self, n_points):
+		"""
+        Sample points from the density model.
+        :param n_points:
+        :return:
+        """
+		n_dims = self.means_.shape[1]
+		sampled_points = np.zeros((n_points, n_dims))
+		prob_component = np.cumsum(self.weights_)
+		r = np.random.uniform(size=n_points)
+
+		is_point_sampled = np.zeros((n_points), dtype=int)
+
+		for i_point in range(n_points):
+			for i_component in range(self.n_components_):
+				if r[i_point] <= prob_component[i_component]:
+					sampled_points[i_point, :] = np.random.multivariate_normal(self.means_[i_component],
+																			   self.covariances_[i_component], 1)
+					is_point_sampled[i_point] = 1
+					break
+			if is_point_sampled[i_point] ==0:
+				print('Did not sample point: '+str(r[i_point])+' '+str(prob_component))
+		return sampled_points

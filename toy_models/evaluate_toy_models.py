@@ -8,8 +8,8 @@ class MethodEvaluator(object):
     def __init__(self, toy_model='GMM_2D', x_lims=None, n_grids=30):
 
         if toy_model == 'GMM_2D':
-            self.toy_model_ = tm.toy_model_2D_GMM()
-
+            self.toy_model_ = tm.GMM2D()
+		
         self.cluster_scores_GMM_CV_ = None
         self.density_errors_GMM_CV_ = None
         self.FE_errors_GMM_CV_ = None
@@ -37,8 +37,9 @@ class MethodEvaluator(object):
         :return:
         """
         # Create grid and evaluate density on it
+        print('Setting true model.')
         self.test_set_ = self.toy_model_.sample(1000)
-        self.true_FE_ = GMM_FE.free_energy(self.test_test_, x_lims=self.x_lims_, n_grids=self.n_grids_)
+        self.true_FE_ = GMM_FE.FreeEnergy(self.test_set_, x_lims=self.x_lims_, n_grids=self.n_grids_,verbose=False)
         self.true_FE_.density_est_ = self.toy_model_
 
         coords, self.true_density_ = self.true_FE_.density_landscape()
@@ -53,7 +54,8 @@ class MethodEvaluator(object):
         self.true_FE_.FE_landscape_ = FE_landscape
         return
 
-    def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=15, n_splits=3):
+    def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=15,
+                       n_splits=3, save_data=False, file_label=''):
         """
         Run multiple free energy estimations and evaluate performance.
         :param n_runs:
@@ -72,11 +74,11 @@ class MethodEvaluator(object):
         data = self.toy_model_.sample(3)
 
         # Create free energy estimators
-        gmm_FE_CV = GMM_FE.free_energy(data, min_n_components=min_n_components, max_n_components=max_n_components,
+        gmm_FE_CV = GMM_FE.FreeEnergy(data, min_n_components=min_n_components, max_n_components=max_n_components,
                                      x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=False,
                                      n_splits=n_splits, n_iterations=n_iterations)
 
-        gmm_FE_mix_models = GMM_FE.free_energy(data, min_n_components=min_n_components, max_n_components=max_n_components,
+        gmm_FE_mix_models = GMM_FE.FreeEnergy(data, min_n_components=min_n_components, max_n_components=max_n_components,
                                      x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=True,
                                      n_splits=n_splits, n_iterations=n_iterations)
 
@@ -99,12 +101,19 @@ class MethodEvaluator(object):
             self.FE_errors_mix_models_[i_run] = self._FE_error(est_FE_landsc_mix_models)
 
             # Compute density errors
+            #self.density_errors_GMM_CV_[i_run] = self._density_error(gmm_FE_CV.density(coords_flatten))
+            #self.density_errors_GMM_CV_[i_run] = self._density_error(gmm_FE_CV.density(coords_flatten))
 
             # Compute loglikelihood of test set
+            self.loglikelihoods_GMM_CV_[i_run] = gmm_FE_CV.density_est_.loglikelihood(self.test_set_)
+            self.loglikelihoods_mix_models_[i_run] = gmm_FE_mix_models.density_est_.loglikelihood(self.test_set_)
 
-        np.save('sampled_data_'+file_label+'.npy',all_data)
-        np.save('free_energy_errors_CV_'+file_label+'.npy',self.FE_errors_GMM_CV_)
-        np.save('free_energy_errors_mix_models_' + file_label + '.npy', self.FE_errors_GMM_mix_models_)
+        if save_data:
+            np.save('sampled_data_'+file_label+'.npy',all_data)
+            np.save('free_energy_errors_CV_'+file_label+'.npy',self.FE_errors_GMM_CV_)
+            np.save('free_energy_errors_mix_models_' + file_label + '.npy', self.FE_errors_GMM_mix_models_)
+            np.save('loglikelihood_test_set_CV_'+file_label+'.npy',self.loglikelihoods_GMM_CV_)
+            np.save('loglikelihood_test_set_mix_models_'+file_label+'.npy',self.loglikelihoods_mix_models_)
         return
 
     def _score_clustering(self):

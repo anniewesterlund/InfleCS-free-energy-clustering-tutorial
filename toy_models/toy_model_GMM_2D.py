@@ -1,7 +1,7 @@
 import numpy as np
 from GMM_FE.GMM import GaussianMixture
 
-class toy_model_2D_GMM(GaussianMixture):
+class GMM2D(GaussianMixture):
 
     def __init__(self):
         GaussianMixture.__init__(self, n_components=9)
@@ -9,27 +9,7 @@ class toy_model_2D_GMM(GaussianMixture):
         self.n_dims_ = 2
         self._set_parameters()
         return
-
-    def sample(self, n_points):
-        """
-        Sample points from the density model.
-        :param n_points:
-        :return:
-        """
-        sampled_points = np.zeros((n_points, self.n_dims_))
-        prob_component = np.cumsum(self.weights_)
-        r = np.random.uniform(size=n_points)
-
-        is_point_sampled = np.zeros((n_points),dtype=int)
-
-        for i_point in range(n_points):
-            for i_component in range(self.n_components_):
-                if r[i_point] <= prob_component[i_component]:
-                    sampled_points[i_point,:] = np.random.multivariate_normal(self.means_[i_component], self.covariances_[i_component],1)
-                    is_point_sampled[i_point] = 1
-                    break
-        return sampled_points
-
+	
     def _set_cov(self, x11,x12,x22):
         tmp_cov = np.zeros((self.n_dims_, self.n_dims_))
 

@@ -18,16 +18,21 @@ class LandscapeClustering():
 		n_clusters = int(np.max(labels) + 1)
 		n_points = x.shape[0]
 
+		print('Cluster labels: '+str(np.unique(labels)))
+
 		min_FE_inds = np.zeros(n_clusters-1)
 		all_inds = np.arange(n_points)
+		mask = np.ones(n_clusters-1,dtype=bool)
 		for i_cluster in range(1,n_clusters):
 			cluster_inds = all_inds[labels == i_cluster]
 			if cluster_inds.shape[0] > 0:
 				min_FE_inds[i_cluster-1] = cluster_inds[np.argmin(free_energies[cluster_inds])]
 			else:
 				min_FE_inds[i_cluster-1] = np.nan
+				mask[i_cluster-1]=False
+				print('No point found in cluster '+str(i_cluster))
 		
-		self.cluster_centers_ = min_FE_inds.astype(int)
+		self.cluster_centers_ = min_FE_inds[mask].astype(int)
 		return self.cluster_centers_
 
 	def _compute_gradients(self, density_model, points):

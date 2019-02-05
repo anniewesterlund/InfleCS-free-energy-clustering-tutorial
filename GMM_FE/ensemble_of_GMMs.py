@@ -91,5 +91,5 @@ class ensemble_of_GMMs(object):
         """
         Compute log-likelihood.
         """
-        density = self.density(x)
+        density = np.log(self.density(x))
         return np.mean(density)
