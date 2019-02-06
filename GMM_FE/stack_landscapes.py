@@ -27,10 +27,11 @@ class LandscapeStacker(object):
 
     def objective_function(self,W):
         # -log(likelihood)
+        W /= W.sum()
         return -self.loglikelihood(self.val_data_list_, list_of_validation_data=True, weights=W)
 
     def fit(self):
-        do_EM = False
+        do_EM = True
 
         print('Training density model weights.')
 
@@ -139,5 +140,6 @@ class LandscapeStacker(object):
         """
         Compute log-likelihood.
         """
-        density = np.log(self.density(x, list_of_validation_data=list_of_validation_data,weights=weights))
-        return np.mean(density)
+        density = self.density(x, list_of_validation_data=list_of_validation_data,weights=weights)
+        density[density<1e-8]=1e-8
+        return np.mean(np.log(density))

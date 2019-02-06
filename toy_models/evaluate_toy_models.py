@@ -2,6 +2,7 @@ import numpy as np
 import toy_models as tm
 import GMM_FE
 import matplotlib.pyplot as plt
+from sklearn.metrics.cluster import fowlkes_mallows_score
 
 class MethodEvaluator(object):
 
@@ -25,6 +26,7 @@ class MethodEvaluator(object):
 
         self.true_FE_ = None
         self.true_density_ = None
+        self.true_labels_ = None
         self.test_set_ = None
         self.min_FE_ = None
         self.set_true_free_energy()
@@ -52,6 +54,8 @@ class MethodEvaluator(object):
         # Set true free energy
         self.true_FE_.coords_ = coords
         self.true_FE_.FE_landscape_ = FE_landscape
+
+        self.true_labels_, _ = gmm_FE_CV.cluster(coords, np.zeros(self.test_set_.shape[0]), self.test_set_)
         return
 
     def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=15,
@@ -108,6 +112,13 @@ class MethodEvaluator(object):
             self.loglikelihoods_GMM_CV_[i_run] = gmm_FE_CV.density_est_.loglikelihood(self.test_set_)
             self.loglikelihoods_mix_models_[i_run] = gmm_FE_mix_models.density_est_.loglikelihood(self.test_set_)
 
+            # Score clustering
+            est_labels_CV, _ = gmm_FE_CV.cluster(coords, est_FE_points_CV, self.test_set_)
+            est_labels_mix_models, _ = gmm_FE_mix_models.cluster(coords, est_FE_points_mix_models, self.test_set_)
+
+            self.cluster_scores_CV_[i_run] = self._score_clustering(gmm_FE_CV)
+            self.cluster_scores_mix_models_[i_run] = self._score_clustering(gmm_FE_mix_models)
+
         if save_data:
             np.save('sampled_data_'+file_label+'.npy',all_data)
             np.save('free_energy_errors_CV_'+file_label+'.npy',self.FE_errors_GMM_CV_)
@@ -116,14 +127,10 @@ class MethodEvaluator(object):
             np.save('loglikelihood_test_set_mix_models_'+file_label+'.npy',self.loglikelihoods_mix_models_)
         return
 
-    def _score_clustering(self):
-        # Cluster data using the estimated density models, and the original density model
-        est_labels_CV, est_cl_centers_CV = gmm_FE_CV.cluster(coords, est_FE_points_CV, data)
-        est_labels_mix_models, est_cl_centers_mix_models = gmm_FE_mix_models.cluster(coords, est_FE_points_mix_models, data)
-
-        # Add clustering of points in original density model
-
-        return
+    def _score_clustering(self, labels):
+        # Score clustering compared to true model
+        score = fowlkes_mallows_score(self.true_labels_, labels)
+        return score
 
     def _FE_error(self, estimated_FE_landscape):
         error = np.mean(np.abs(estimated_FE_landscape-self.true_FE_.FE_landscape_))
