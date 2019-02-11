@@ -1,6 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.spatial.distance import cdist
+
 
 class ClusterDensity(object):
 
@@ -95,7 +95,7 @@ class ClusterDensity(object):
 		# Set cluster index of point to the same as the cluster index of evaluated (grid) point
 		cluster_inds = cluster_indices_eval_points[min_inds]
 		return cluster_inds
-	
+
 	def cluster_data(self, is_FE_min):
 		
 		# Construct and detect connected components

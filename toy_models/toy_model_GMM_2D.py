@@ -1,5 +1,6 @@
 import numpy as np
 from GMM_FE.GMM import GaussianMixture
+from GMM_FE.GMM_free_energy_static_landscape_weighting import FreeEnergy
 
 class GMM2D(GaussianMixture):
 
@@ -9,7 +10,7 @@ class GMM2D(GaussianMixture):
         self.n_dims_ = 2
         self._set_parameters()
         return
-	
+
     def _set_cov(self, x11,x12,x22):
         tmp_cov = np.zeros((self.n_dims_, self.n_dims_))
 
@@ -22,8 +23,8 @@ class GMM2D(GaussianMixture):
     def _set_parameters(self):
 
         self.means_ = np.asarray([ np.asarray([0.8,0.35]), np.asarray([0.45,0.52]), np.asarray([0.2,0.6]),
-                                   np.asarray([0.05,0.8]), np.asarray([0.52,0.27]), np.asarray([0.48,0.27]),
-                                   np.asarray([0.49, 0.24]), np.asarray([0.4, 0.34]), np.asarray([0.8,0.5])])
+                                   np.asarray([0.05,0.8]), np.asarray([0.5,0.25]), np.asarray([0.5,0.25]),
+                                   np.asarray([0.5, 0.25]), np.asarray([0.4, 0.34]), np.asarray([0.8,0.5])])
 
         covs = [np.zeros((2,2))]*self.n_components_
 

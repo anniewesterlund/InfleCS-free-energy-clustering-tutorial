@@ -1,5 +1,7 @@
 import numpy as np
+from scipy.optimize import fmin_cg
 import GMM_FE.cluster_density as cluster
+from scipy.spatial.distance import cdist
 from scipy.stats import multivariate_normal
 
 class LandscapeClustering():
@@ -35,6 +37,54 @@ class LandscapeClustering():
 		self.cluster_centers_ = min_FE_inds[mask].astype(int)
 		return self.cluster_centers_
 
+	def minimization_fun(self, x, *args):
+		density_model,_ = args
+		score = -density_model.density(x[np.newaxis,:])
+		return score
+
+	def minimization_grad(self, x, *args):
+		density_model,_ = args
+		grad,_ = self._compute_gradients(density_model, x[np.newaxis,:])
+		return -np.ravel(grad)
+
+	def assign_transition_points(self, cluster_indices, points, density_model):
+		"""
+		Assign cluster indices to transition points by maximizing density towards local maximum and use this to assign
+		the cluster index.
+		:return:
+		"""
+		print("Assigning cluster indices to non-core cluster points.")
+		cl_inds_final = np.copy(cluster_indices)
+		transition_point_inds = np.where(cluster_indices==0)[0]
+		n_assigned = np.sum(cluster_indices>0)
+		assigned_points = points[0:n_assigned,:]
+
+		# Sort points from higher to lower density
+		density_all = density_model.density(points)
+		density_all[transition_point_inds] = -1
+		densities_trans_points = density_all[transition_point_inds]
+
+		# Sort transition points in decending density order (assign cluster index to highest density points first)
+		sort_inds = np.argsort(-densities_trans_points)
+		transition_point_inds = transition_point_inds[sort_inds]
+
+		counter = 0
+		for ind in transition_point_inds:
+
+			point = points[ind]
+			# Extract assigned points
+			assigned_inds = np.where(cl_inds_final>0)[0]
+			assigned_points = points[assigned_inds,:]
+			distances = cdist(point[np.newaxis,:],assigned_points)
+
+			# Find closest assigned point. Use its cluster index on the current unassigned point.
+			closest_point = np.argmin(distances[0,:])
+			cl_inds_final[ind] = cl_inds_final[assigned_inds[closest_point]]
+
+			n_assigned += 1
+			counter += 1
+		return cl_inds_final
+
 	def _compute_gradients(self, density_model, points):
 		n_points = points.shape[0]
 		n_dims = points.shape[1]
@@ -47,7 +97,6 @@ class LandscapeClustering():
 		gradients = np.zeros((n_points, n_dims))
 
 		inv_covs = [np.zeros((n_dims, n_dims))] * n_components
-		print('Computing gradients.')
 		for i_component in range(n_components):
 			inv_covs[i_component] = np.linalg.inv(covs[i_component])
 
@@ -131,7 +180,7 @@ class LandscapeClustering():
 			eigvals = np.linalg.eigvals(hessian)
 						
 			# Check if Hessian is negative definite, the point is at a free energy minimum
-			if eigvals.max() < 0:
+			if eigvals.max() < 0.0:
 				is_FE_min[i_point] = True
 		
 		return is_FE_min
@@ -139,9 +188,9 @@ class LandscapeClustering():
 	def cluster(self, density_models, points, eval_points=None):
 		# Indicate whether points are at free energy minimum or not
 		is_FE_min = self._Hessian_def(density_models, points)
-
+		self.grid_points_=points
 		# Cluster free energy landscape
 		self.clusterer_ = cluster.ClusterDensity(points, eval_points)
 		self.labels_ = self.clusterer_.cluster_data(is_FE_min)
-		return self.labels_
+		return self.labels_, is_FE_min
 		

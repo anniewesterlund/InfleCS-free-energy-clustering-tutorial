@@ -3,7 +3,8 @@ import GMM_FE.GMM as GMM
 import scipy.optimize as opt
 
 class LandscapeStacker(object):
-    def __init__(self, data, list_of_validation_data, list_of_models, n_splits=1, convergence_tol=5e-3, n_iterations=1):
+    def __init__(self, data, list_of_validation_data, list_of_models, n_splits=1, convergence_tol=5e-3, n_iterations=1,
+                 model_weights=None):
         """
         Class for weighting density estimators with EM, based on how well they describe the validation dataset.
         :param data: [n_samples x n_dimensions]
@@ -21,8 +22,13 @@ class LandscapeStacker(object):
         self.n_components_list_ = []
 
         # Initlialize weights
-        if self.n_models_ > 0:
-            self.model_weights_ = 1.0 / self.n_models_ * np.ones(self.n_models_)
+        if model_weights is None:
+            if self.n_models_ > 0:
+                self.model_weights_ = 1.0 / self.n_models_ * np.ones(self.n_models_)
+        else:
+            self.model_weights_ = model_weights
+            print('Setting model weights: ' + str(model_weights))
+        self._set_n_component_list()
         return
 
     def objective_function(self,W):
@@ -48,12 +54,12 @@ class LandscapeStacker(object):
 
         # Keep only models with nonzero weight
         self._sparisify_model()
+        self._set_n_component_list()
 
         # Train each density model on the full dataset.
         print('Training each model on the full dataset.')
         for i_model in range(self.n_models_):
             n_components = self.GMM_list_[i_model].n_components_
-            self.n_components_list_.append(n_components)
             print(' - Training model with '+str(n_components)+' components')
             best_loglikelihood = -np.inf
             for i_iter in range(self.n_iterations_):
@@ -66,6 +72,17 @@ class LandscapeStacker(object):
                     self.GMM_list_[i_model] = density_model
 
         self.n_components_list_ = np.asarray(self.n_components_list_)
+        return
+
+    def _set_n_component_list(self):
+        """
+        Set the list with number of components.
+        :return:
+        """
+        self.n_components_list_ = []
+        for i_model in range(self.n_models_):
+            n_components = self.GMM_list_[i_model].weights_.shape[0]
+            self.n_components_list_.append(n_components)
         return
 
     def _expectation(self):

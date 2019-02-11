@@ -2,6 +2,7 @@ import numpy as np
 from scipy.spatial.distance import cdist
 
 import GMM_FE.GMM as GMM
+from sklearn.mixture import GaussianMixture
 import GMM_FE.cross_validation as CV
 import GMM_FE
 
@@ -11,7 +12,7 @@ import matplotlib.pyplot as plt
 class FreeEnergy(object):
 
 	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0, n_grids=50,
-				 n_splits=3, shuffle_data=False, n_iterations=1, covergence_tol=1e-6, stack_landscapes=False, verbose=True, test_set_perc=0.0):
+				 n_splits=1, shuffle_data=False, n_iterations=1, convergence_tol=1e-4, stack_landscapes=False, verbose=True, test_set_perc=0.0):
 		"""
 		Class for computing free energy landscape in [kcal/mol] using probabilistic PCA.
 		- observed_data has dimensionality [N x d]
@@ -20,7 +21,7 @@ class FreeEnergy(object):
 		self.shuffle_data = shuffle_data
 		self.n_splits_ = n_splits
 		self.n_iterations_ = n_iterations
-		self.convergence_tol_ = covergence_tol
+		self.convergence_tol_ = convergence_tol
 		self.stack_landscapes_ = stack_landscapes
 
 		self.min_n_components = min_n_components
@@ -54,6 +55,7 @@ class FreeEnergy(object):
 		self.density_est_ = None
 		self.nx_ = n_grids
 		self.test_set_perc_ = test_set_perc
+		self.verbose_ = verbose
 
 		self.test_set_loglikelihood = None
 		if verbose:
@@ -62,12 +64,13 @@ class FreeEnergy(object):
 			print('   shuffle_data = ' + str(shuffle_data))
 			print('   n_iterations = ' + str(n_iterations))
 			print('   n_grids = ' + str(n_grids))
-			print('   covergence_tol = ' + str(covergence_tol))
+			print('   covergence_tol = ' + str(convergence_tol))
 			print('   stack_landscapes = ' + str(stack_landscapes))
 			print('   x_lims (axes limits) = ' + str(self.x_lims_))
 			print('   temperature = ' + str(temperature))
 			print('   min_n_components = ' + str(min_n_components))
 			print('   max_n_components = ' + str(max_n_components))
+			print('   n_components_step = ' + str(n_components_step))
 			print('*----------------------------------------------------------------------------*')
 		return
 
@@ -117,7 +120,7 @@ class FreeEnergy(object):
 		:param data: [n_samples x n_dims]
 		:return: free energy of points
 		"""
-		best_loglikelihood = -np.inf
+
 		best_n_components = self.min_n_components
 
 		# Extract test set from the dataset
@@ -134,40 +137,61 @@ class FreeEnergy(object):
 		else:
 			print('Estimating density with GMM.')
 
+		best_loglikelihood = -np.inf
 		list_of_GMMs = []
 		list_of_validation_data = []
+		BICs = []
+		n_points, n_dims = data.shape
 
 		# Get indices of training and validation datasets
-		train_inds, val_inds = CV.split_train_validation(data, self.n_splits_, self.shuffle_data)
+		if self.n_splits_ > 1:
+			train_inds, val_inds = CV.split_train_validation(data, self.n_splits_, self.shuffle_data)
 
 		# Determine number of components with k-fold cross-validation,
 		# or store all estimated densities and then weight together.
 		if self.max_n_components is not None:
 			for n_components in range(self.min_n_components,self.max_n_components+1,self.n_components_step):
-				print('# Components = '+str(n_components))
-				gmm = GMM.GaussianMixture(n_components=n_components,convergence_tol=self.convergence_tol_)
+				if self.verbose_:
+					print('# Components = '+str(n_components))
 
-				loglikelihood = 0
-				for i_split in range(self.n_splits_):
-					training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
+				if self.n_splits_ > 1:
+					loglikelihood = 0
+					for i_split in range(self.n_splits_):
+						gmm = GaussianMixture(n_components=n_components,tol=self.convergence_tol_)
 
-					# Train model on the current training data
-					if self.stack_landscapes_:
+						training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
+
+						# Train model on the current training data
 						gmm.fit(training_data)
-						# Store density model and validation data
-						list_of_GMMs.append(gmm)
-						list_of_validation_data.append(validation_data)
-						loglikelihood += gmm.loglikelihood(validation_data)
-					else:
-						gmm.fit(training_data)
+
 						# Check log-likelihood of validation data
-						loglikelihood += gmm.loglikelihood(validation_data)
-				
-				if not(self.stack_landscapes_):
+						loglikelihood += gmm.score(validation_data)
+
+					# Keep best model
 					if loglikelihood > best_loglikelihood:
-						best_n_components = n_components
 						best_loglikelihood = loglikelihood
-				print('Summed validation set log-likelihood: '+str(loglikelihood))
+						best_n_components = n_components
+				else:
+					for i_iter in range(self.n_iterations_):
+						best_loglikelihood = -np.inf
+						gmm = GaussianMixture(n_components=n_components, tol=self.convergence_tol_)
+
+						gmm.fit(data)
+						loglikelihood = gmm.score(data)
+						# Compute average BIC over iterations
+						if i_iter == 0:
+							BICs.append(gmm.bic(data) / self.n_iterations_)
+						else:
+							BICs[-1] += gmm.bic(data) / self.n_iterations_
+
+						# Keep best model
+						if loglikelihood > best_loglikelihood:
+							best_loglikelihood = loglikelihood
+							if i_iter == 0:
+								list_of_GMMs.append(GaussianMixture(n_components=n_components))
+							list_of_GMMs[-1].weights_ = gmm.weights_
+							list_of_GMMs[-1].means_ = gmm.means_
+							list_of_GMMs[-1].covariances_ = gmm.covariances_
 
 		if self.stack_landscapes_:
 			if  self.max_n_components is None:
@@ -175,26 +199,49 @@ class FreeEnergy(object):
 				gmm.fit(data)
 				list_of_GMMs.append(gmm)
 
+			BICs = np.asarray(BICs)
+			model_weights = np.exp(-0.5 *(BICs-BICs.min()))
+			model_weights /= model_weights.sum()
+
+			print(model_weights)
+
 			# Fit mixture of density estimators using the validation data
-			self.density_est_ = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs, n_splits=self.n_splits_,
-														convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_)
-			self.density_est_.fit()
+			self.density_est_ = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs, n_splits=1,
+														convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_,
+														model_weights=model_weights)
+			self.density_est_.GMM_list_ = list_of_GMMs
+			#self.density_est_.fit()
 
 			density = self.density_est_.density(data_orig)
 		else:
-			print('Training final model with '+str(best_n_components)+' components.')
-			# Estimate FE with best number of components
-			best_loglikelihood = -np.inf
+			# Estimate FE with best number of components (deduced from cross-validation)
+			if self.n_splits_ > 1:
+				print('Training final model with ' + str(best_n_components) + ' components.')
+				self.density_est_ = GMM.GaussianMixture(n_components=best_n_components)
+				# Fit multiple times to
+				for i_iter in range(self.n_iterations_):
+					gmm = GaussianMixture(n_components=best_n_components,tol=self.convergence_tol_)
+					gmm.fit(data)
+					loglikelihood = gmm.score(data)
+					if  loglikelihood > best_loglikelihood:
+						best_loglikelihood = loglikelihood
+						self.density_est_.weights_ = gmm.weights_
+						self.density_est_.means_ = gmm.means_
+						self.density_est_.covariances_ = gmm.covariances_
+			else:
+				BICs = np.asarray(BICs)
+				model_ind = BICs.argmin()
+				gmm = list_of_GMMs[model_ind]
+				best_n_components = gmm.weights_.shape[0]
+				self.density_est_ = GMM.GaussianMixture(n_components=best_n_components)
+				print('Identifying final model with ' + str(best_n_components) + ' components.')
 
-			for i_iter in range(self.n_iterations_):
-				density_model = GMM.GaussianMixture(n_components=best_n_components,convergence_tol=self.convergence_tol_)
-				density_model.fit(data)
-				loglikelihood = density_model.loglikelihood(data)
-				if  loglikelihood > best_loglikelihood:
-					best_loglikelihood = loglikelihood
-					density = density_model.density(data_orig)
-					self.density_est_ = density_model
 
+				self.density_est_.weights_ = gmm.weights_
+				self.density_est_.means_ = gmm.means_
+				self.density_est_.covariances_ = gmm.covariances_
+
+			density = self.density_est_.density(data_orig)
 		# Compute test set loglikelihood on the test set if test set exists
 		if n_points_test > 0:
 			self.test_set_loglikelihood = self.density_est_.loglikelihood(test_data)
@@ -239,16 +286,20 @@ class FreeEnergy(object):
 		
 		return free_energy
 	
-	def evaluate_clustering(self, points):
+	def evaluate_clustering(self, points, assign_transition_points=True):
 		"""
 		Assign cluster indices to points based on precomputed density model clustering.
 		"""
 		print('Assigning cluster labels based on precomputed density model clustering.')
 		if self.cl_ is not None and self.cl_.clusterer_ is not None:
 			labels = self.cl_.clusterer_.data_cluster_indices(cdist(points, self.cl_.clusterer_.grid_points_), self.cl_.clusterer_.grid_cluster_inds_)
+
+		if assign_transition_points:
+				labels = self.cl_.assign_transition_points(labels, points, self.density_est_)
+
 		return labels
 
-	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False):
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=True):
 		"""
 		Cluster points according to estimated density.
 		"""
@@ -261,15 +312,21 @@ class FreeEnergy(object):
 				for x in points:
 					tmp_points.append(np.ravel(x))
 				points = np.asarray(tmp_points).T
-		
-		self.labels_ = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
+
+		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
 
 		if eval_points is not None:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(eval_points, self.labels_, free_energies)
 		else:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(points, self.labels_, free_energies)
+
+		if assign_transition_points:
+			if eval_points is not None:
+				self.labels_ = self.cl_.assign_transition_points(self.labels_, eval_points, self.density_est_)
+			else:
+				self.labels_ = self.cl_.assign_transition_points(self.labels_, points, self.density_est_)
+
 		print('Done clustering.')
-		
 		if return_center_coords:
 			return self.labels_, eval_points[self.cluster_centers_,:]
 		else:
