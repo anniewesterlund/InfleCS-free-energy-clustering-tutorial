@@ -131,7 +131,13 @@ class MethodEvaluator(object):
             # Score clustering
             est_labels_CV, _ = gmm_FE_CV.cluster(self.test_set_, est_FE_points_CV)
             #est_labels_mix_models, _ = gmm_FE_mix_models.cluster(coords, est_FE_points_mix_models, self.test_set_)
-
+            
+            
+            if hasattr(self.toy_model_,"assign_cluster_labels"):
+                self.true_labels_ = self.toy_model_.assign_cluster_labels(self.test_set_)
+            else:
+                self.true_labels_, _ = self.true_FE_.evaluate_clustering(self.test_set_)
+			
             self.cluster_scores_GMM_CV_[i_run] = self._score_clustering(est_labels_CV)
             self.cluster_scores_GMM_clusters_[i_run] = self._score_clustering(gmm_FE_CV.density_est_.predict(self.test_set_))
             #self.cluster_scores_mix_models_[i_run] = self._score_clustering(gmm_FE_mix_models)

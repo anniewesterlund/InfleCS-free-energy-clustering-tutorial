@@ -14,8 +14,8 @@ class FreeEnergy(object):
 	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0, n_grids=50,
 				 n_splits=1, shuffle_data=False, n_iterations=1, convergence_tol=1e-4, stack_landscapes=False, verbose=True, test_set_perc=0.0):
 		"""
-		Class for computing free energy landscape in [kcal/mol] using probabilistic PCA.
-		- observed_data has dimensionality [N x d]
+		Class for computing free energy landscape in [kcal/mol].
+		- observed_data has dimensionality [N x d].
 		"""
 		self.data_ = data
 		self.shuffle_data = shuffle_data
@@ -172,6 +172,7 @@ class FreeEnergy(object):
 						best_loglikelihood = loglikelihood
 						best_n_components = n_components
 				else:
+					tmp_GMM_list = []
 					for i_iter in range(self.n_iterations_):
 						best_loglikelihood = -np.inf
 						gmm = GaussianMixture(n_components=n_components, tol=self.convergence_tol_)
@@ -183,15 +184,21 @@ class FreeEnergy(object):
 							BICs.append(gmm.bic(data) / self.n_iterations_)
 						else:
 							BICs[-1] += gmm.bic(data) / self.n_iterations_
-
+						
+						"""tmp_GMM_list.append(GMM.GaussianMixture(n_components=n_components))
+						tmp_GMM_list[-1].weights_ = gmm.weights_
+						tmp_GMM_list[-1].means_ = gmm.means_
+						tmp_GMM_list[-1].covariances_ = gmm.covariances_"""
 						# Keep best model
 						if loglikelihood > best_loglikelihood:
 							best_loglikelihood = loglikelihood
 							if i_iter == 0:
-								list_of_GMMs.append(GaussianMixture(n_components=n_components))
+								list_of_GMMs.append(GMM.GaussianMixture(n_components=n_components))
 							list_of_GMMs[-1].weights_ = gmm.weights_
 							list_of_GMMs[-1].means_ = gmm.means_
 							list_of_GMMs[-1].covariances_ = gmm.covariances_
+					
+					#list_of_GMMs.append(tmp_GMM_list)
 
 		if self.stack_landscapes_:
 			if  self.max_n_components is None:
@@ -234,9 +241,11 @@ class FreeEnergy(object):
 				gmm = list_of_GMMs[model_ind]
 				best_n_components = gmm.weights_.shape[0]
 				self.density_est_ = GMM.GaussianMixture(n_components=best_n_components)
-				print('Identifying final model with ' + str(best_n_components) + ' components.')
-
-
+				#self.density_est_ = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs[model_ind], n_splits=1,
+				#										convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_, 
+				#										model_weights=1/len(list_of_GMMs[model_ind])*np.ones(len(list_of_GMMs[model_ind])))
+				print('Identifying final model with ' + str(self.density_est_.n_components_) + ' components.')
+				
 				self.density_est_.weights_ = gmm.weights_
 				self.density_est_.means_ = gmm.means_
 				self.density_est_.covariances_ = gmm.covariances_
