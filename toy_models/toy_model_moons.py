@@ -8,7 +8,7 @@ class Moons():
         self.labels_ = None
         self.data_ = None
         self.classifier = KNeighborsClassifier(n_neighbors=3)
-
+        self.name = 'moons'
         return
 
     def sample(self, n_points):

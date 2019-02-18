@@ -6,6 +6,7 @@ class MultipleGMMs(GaussianMixture):
 		data = np.zeros((3,2))
 		GaussianMixture.__init__(self, n_components=10)
 		
+		self.name = 'mGMMs'
 		self.n_dims_ = 2
 		self._set_parameters()
 		return

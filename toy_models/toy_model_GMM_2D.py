@@ -9,6 +9,7 @@ class GMM2D(GaussianMixture):
 
         self.n_dims_ = 2
         self._set_parameters()
+        self.name = 'GMM_2D'
         return
 
     def _set_cov(self, x11,x12,x22):

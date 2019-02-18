@@ -2,7 +2,12 @@ import sys
 import numpy as np
 import toy_models as tm
 import GMM_FE
-import matplotlib.pyplot as plt
+from toy_models import Kmeans_cluster as kmc
+from toy_models import spectral_cluster as sc
+from toy_models import agglomerative_ward_cluster as awc
+
+from sklearn.metrics import v_measure_score
+from sklearn.metrics import adjusted_mutual_info_score
 from sklearn.metrics.cluster import fowlkes_mallows_score
 
 class MethodEvaluator(object):
@@ -15,20 +20,21 @@ class MethodEvaluator(object):
             self.toy_model_ = tm.MultipleGMMs()
         elif toy_model == 'moons':
             self.toy_model_ = tm.Moons()
+        elif toy_model == 'digits':
+            self.toy_model_ = tm.Digits()
+        elif toy_model == 'nonlinear_GMM_2D':
+            self.toy_model_ = tm.GMM2dNonlinear()
         else:
             print('Toy model: '+str(toy_model)+' does not exist')
             sys.exit(0)
 		
-        self.cluster_scores_GMM_CV_ = None
-        self.density_errors_GMM_CV_ = None
-        self.FE_errors_GMM_CV_ = None
-        self.loglikelihoods_GMM_CV_ = None
-        self.convergence_tol_ = convergence_tol
+        self.cluster_scores_kmeans_ = None
+        self.cluster_scores_AW_ = None
+        self.cluster_scores_spectral_ = None
+        self.cluster_scores_GMM_ = None
+        self.cluster_scores_GMM_FE_min_ = None
 
-        self.cluster_scores_mix_models_ = None
-        self.density_errors_mix_models_ = None
-        self.FE_errors_mix_models_ = None
-        self.loglikelihoods_mix_models_ = None
+        self.convergence_tol_ = convergence_tol
 
         self.x_lims_ = x_lims
         self.n_grids_ = n_grids
@@ -50,7 +56,7 @@ class MethodEvaluator(object):
         """
         # Create grid and evaluate density on it
         print('Setting true model.')
-        self.test_set_ = self.toy_model_.sample(1000)
+        self.test_set_ = self.toy_model_.sample(2000)
         self.true_FE_ = GMM_FE.FreeEnergy(self.test_set_, x_lims=self.x_lims_, n_grids=self.n_grids_,verbose=False,
                                           convergence_tol=self.convergence_tol_)
         self.true_FE_.density_est_ = self.toy_model_
@@ -72,7 +78,7 @@ class MethodEvaluator(object):
             self.true_labels_, _ = self.true_FE_.cluster(coords, np.zeros(self.test_set_.shape[0]), self.test_set_)
         return
 
-    def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=15,
+    def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=25,
                        n_splits=3, save_data=False, file_label=''):
         """
         Run multiple free energy estimations and evaluate performance.
@@ -80,30 +86,35 @@ class MethodEvaluator(object):
         :return:
         """
 
-        self.cluster_scores_GMM_clusters_ = np.zeros(n_runs)
+        self.cluster_score_ami_kmeans_ = np.zeros(n_runs)
+        self.cluster_score_ami_AW_ = np.zeros(n_runs)
+        self.cluster_score_ami_spectral_ = np.zeros(n_runs)
+        self.cluster_score_ami_GMM_ = np.zeros(n_runs)
+        self.cluster_score_ami_GMM_FE_min_ = np.zeros(n_runs)
 
-        self.cluster_scores_GMM_CV_ = np.zeros(n_runs)
-        self.density_errors_GMM_CV_ = np.zeros(n_runs)
-        self.FE_errors_GMM_CV_ = np.zeros(n_runs)
-        self.loglikelihoods_GMM_CV_ = np.zeros(n_runs)
+        self.cluster_score_fm_kmeans_ = np.zeros(n_runs)
+        self.cluster_score_fm_AW_ = np.zeros(n_runs)
+        self.cluster_score_fm_spectral_ = np.zeros(n_runs)
+        self.cluster_score_fm_GMM_ = np.zeros(n_runs)
+        self.cluster_score_fm_GMM_FE_min_ = np.zeros(n_runs)
 
-        self.cluster_scores_mix_models_ = np.zeros(n_runs)
-        self.density_errors_mix_models_ = np.zeros(n_runs)
-        self.FE_errors_mix_models_ = np.zeros(n_runs)
-        self.loglikelihoods_mix_models_ = np.zeros(n_runs)
+        self.cluster_score_vm_kmeans_ = np.zeros(n_runs)
+        self.cluster_score_vm_AW_ = np.zeros(n_runs)
+        self.cluster_score_vm_spectral_ = np.zeros(n_runs)
+        self.cluster_score_vm_GMM_ = np.zeros(n_runs)
+        self.cluster_score_vm_GMM_FE_min_ = np.zeros(n_runs)
 
         data = self.toy_model_.sample(3)
 
         # Create free energy estimators
-        gmm_FE_CV = GMM_FE.FreeEnergy(data, min_n_components=min_n_components, max_n_components=max_n_components,
+        gmm_FE = GMM_FE.FreeEnergy(data, min_n_components=min_n_components, max_n_components=max_n_components,
                                      x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=False,
                                      n_splits=n_splits, n_iterations=n_iterations,convergence_tol=self.convergence_tol_,
                                       verbose=self.verbose_)
 
-        gmm_FE_mix_models = GMM_FE.FreeEnergy(data, min_n_components=min_n_components, max_n_components=max_n_components,
-                                     x_lims=self.x_lims_, n_grids=self.n_grids_, stack_landscapes=True,
-                                     n_splits=n_splits, n_iterations=n_iterations,convergence_tol=self.convergence_tol_,
-                                              verbose=self.verbose_)
+        km = kmc.KMeansCluster(min_n_components, max_n_components)
+        aw = awc.AWCluster(min_n_components, max_n_components)
+        spectral = sc.SpectralCluster(min_n_components, max_n_components)
 
         all_data = []
         for i_run in range(n_runs):
@@ -112,49 +123,74 @@ class MethodEvaluator(object):
             data = self.toy_model_.sample(n_points)
             all_data.append(data)
 
-            # Set data in model
-            gmm_FE_CV.data_ = data
-            gmm_FE_mix_models.data_ = data
+            # Set data in model and estimate GMM density
+            gmm_FE.data_ = data
+            coords, est_FE_landsc, FE_points = gmm_FE.landscape()
 
-            # Estimate free energy of sampled data
-            coords, est_FE_landsc_CV, est_FE_points_CV = gmm_FE_CV.landscape()
-            #_, est_FE_landsc_mix_models, est_FE_points_mix_models = gmm_FE_mix_models.landscape()
-
-            # Compute free energy errors
-            self.FE_errors_GMM_CV_[i_run] = self._FE_error(est_FE_landsc_CV)
-            #self.FE_errors_mix_models_[i_run] = self._FE_error(est_FE_landsc_mix_models)
-
-            # Compute loglikelihood of test set
-            self.loglikelihoods_GMM_CV_[i_run] = gmm_FE_CV.density_est_.loglikelihood(self.test_set_)
-            #self.loglikelihoods_mix_models_[i_run] = gmm_FE_mix_models.density_est_.loglikelihood(self.test_set_)
-
-            # Score clustering
-            est_labels_CV, _ = gmm_FE_CV.cluster(self.test_set_, est_FE_points_CV)
-            #est_labels_mix_models, _ = gmm_FE_mix_models.cluster(coords, est_FE_points_mix_models, self.test_set_)
-            
-            
-            if hasattr(self.toy_model_,"assign_cluster_labels"):
-                self.true_labels_ = self.toy_model_.assign_cluster_labels(self.test_set_)
+            # Get true cluster labels
+            if hasattr(self.toy_model_, "assign_cluster_labels"):
+                self.true_labels_ = self.toy_model_.assign_cluster_labels(data)
             else:
-                self.true_labels_, _ = self.true_FE_.evaluate_clustering(self.test_set_)
-			
-            self.cluster_scores_GMM_CV_[i_run] = self._score_clustering(est_labels_CV)
-            self.cluster_scores_GMM_clusters_[i_run] = self._score_clustering(gmm_FE_CV.density_est_.predict(self.test_set_))
-            #self.cluster_scores_mix_models_[i_run] = self._score_clustering(gmm_FE_mix_models)
+                print('Setting true labels.')
+                self.true_labels_, _ = self.true_FE_.cluster(data, np.zeros(data.shape[0]))
+
+            # Cluster data with different methods
+            self.FE_min_labels, _ = gmm_FE.cluster(data, FE_points)
+            self.km_labels = km.cluster(data)
+            self.aw_labels = aw.cluster(data)
+            self.spectral_labels = spectral.cluster(data)
+
+            # Score clustering using different scoring metrics
+            # Completeness score
+            self.cluster_score_vm_GMM_FE_min_[i_run] = self._score_clustering(self.FE_min_labels,'cs')
+            self.cluster_score_vm_GMM_[i_run] = self._score_clustering(gmm_FE.density_est_.predict(data),'cs')
+            self.cluster_score_vm_kmeans_[i_run] = self._score_clustering(self.km_labels,'cs')
+            self.cluster_score_vm_AW_[i_run] = self._score_clustering(self.aw_labels,'cs')
+            self.cluster_score_vm_spectral_[i_run] = self._score_clustering(self.spectral_labels,'cs')
+
+            # Adjusted MI
+            self.cluster_score_ami_GMM_FE_min_[i_run] = self._score_clustering(self.FE_min_labels,'ami')
+            self.cluster_score_ami_GMM_[i_run] = self._score_clustering(gmm_FE.density_est_.predict(data),'ami')
+            self.cluster_score_ami_kmeans_[i_run] = self._score_clustering(self.km_labels,'ami')
+            self.cluster_score_ami_AW_[i_run] = self._score_clustering(self.aw_labels,'ami')
+            self.cluster_score_ami_spectral_[i_run] = self._score_clustering(self.spectral_labels,'ami')
+
+            # Fowlkes Mallows
+            self.cluster_score_fm_GMM_FE_min_[i_run] = self._score_clustering(self.FE_min_labels,'fm')
+            self.cluster_score_fm_GMM_[i_run] = self._score_clustering(gmm_FE.density_est_.predict(data),'fm')
+            self.cluster_score_fm_kmeans_[i_run] = self._score_clustering(self.km_labels,'fm')
+            self.cluster_score_fm_AW_[i_run] = self._score_clustering(self.aw_labels,'fm')
+            self.cluster_score_fm_spectral_[i_run] = self._score_clustering(self.spectral_labels,'fm')
 
         if save_data:
-            np.save('sampled_data_'+file_label+'.npy',all_data)
-            np.save('free_energy_errors_CV_'+file_label+'.npy',self.FE_errors_GMM_CV_)
-            np.save('free_energy_errors_mix_models_' + file_label + '.npy', self.FE_errors_GMM_mix_models_)
-            np.save('loglikelihood_test_set_CV_'+file_label+'.npy',self.loglikelihoods_GMM_CV_)
-            np.save('loglikelihood_test_set_mix_models_'+file_label+'.npy',self.loglikelihoods_mix_models_)
-            np.save('cluster_correlations_FE_min_'+file_label+'.npy',self.cluster_scores_GMM_CV_)
-            np.save('cluster_correlations_GMM_' + file_label + '.npy', self.cluster_scores_GMM_clusters_)
+            np.save('data_out/sampled_data_'+file_label+'.npy',all_data)
+            np.save('data_out/cluster_score_fm_FE_min_'+self.toy_model_.name+'.npy',self.cluster_score_fm_GMM_FE_min_)
+            np.save('data_out/cluster_score_fm_GMM_' + self.toy_model_.name + '.npy', self.cluster_score_fm_GMM_)
+            np.save('data_out/cluster_score_fm_kmeans_' + self.toy_model_.name + '.npy', self.cluster_score_fm_kmeans_)
+            np.save('data_out/cluster_score_fm_AW_' + self.toy_model_.name + '.npy', self.cluster_score_fm_AW_)
+            np.save('data_out/cluster_score_fm_spectral_' + self.toy_model_.name + '.npy', self.cluster_score_fm_spectral_)
+
+            np.save('data_out/cluster_score_ami_FE_min_'+self.toy_model_.name+'.npy',self.cluster_score_ami_GMM_FE_min_)
+            np.save('data_out/cluster_score_ami_GMM_' + self.toy_model_.name + '.npy', self.cluster_score_ami_GMM_)
+            np.save('data_out/cluster_score_ami_kmeans_' + self.toy_model_.name + '.npy', self.cluster_score_ami_kmeans_)
+            np.save('data_out/cluster_score_ami_AW_' + self.toy_model_.name + '.npy', self.cluster_score_ami_AW_)
+            np.save('data_out/cluster_score_ami_spectral_' + self.toy_model_.name + '.npy', self.cluster_score_ami_spectral_)
+
+            np.save('data_out/cluster_score_vm_FE_min_'+self.toy_model_.name+'.npy',self.cluster_score_vm_GMM_FE_min_)
+            np.save('data_out/cluster_score_vm_GMM_' + self.toy_model_.name + '.npy', self.cluster_score_vm_GMM_)
+            np.save('data_out/cluster_score_vm_kmeans_' + self.toy_model_.name + '.npy', self.cluster_score_vm_kmeans_)
+            np.save('data_out/cluster_score_vm_AW_' + self.toy_model_.name + '.npy', self.cluster_score_vm_AW_)
+            np.save('data_out/cluster_score_vm_spectral_' + self.toy_model_.name + '.npy', self.cluster_score_vm_spectral_)
         return
 
-    def _score_clustering(self, labels):
+    def _score_clustering(self, labels,metric='vm'):
         # Score clustering compared to true model
-        score = fowlkes_mallows_score(self.true_labels_, labels)
+        if metric=='fm':
+            score = fowlkes_mallows_score(self.true_labels_, labels)
+        elif metric=='ami':
+            score = adjusted_mutual_info_score(self.true_labels_, labels)
+        else:
+            score = v_measure_score(self.true_labels_, labels)
         return score
 
     def _FE_error(self, estimated_FE_landscape):

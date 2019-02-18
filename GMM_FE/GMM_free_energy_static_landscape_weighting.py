@@ -172,33 +172,25 @@ class FreeEnergy(object):
 						best_loglikelihood = loglikelihood
 						best_n_components = n_components
 				else:
-					tmp_GMM_list = []
+					best_loglikelihood = -np.inf
 					for i_iter in range(self.n_iterations_):
-						best_loglikelihood = -np.inf
 						gmm = GaussianMixture(n_components=n_components, tol=self.convergence_tol_)
-
+						
 						gmm.fit(data)
 						loglikelihood = gmm.score(data)
 						# Compute average BIC over iterations
 						if i_iter == 0:
-							BICs.append(gmm.bic(data) / self.n_iterations_)
-						else:
-							BICs[-1] += gmm.bic(data) / self.n_iterations_
-						
-						"""tmp_GMM_list.append(GMM.GaussianMixture(n_components=n_components))
-						tmp_GMM_list[-1].weights_ = gmm.weights_
-						tmp_GMM_list[-1].means_ = gmm.means_
-						tmp_GMM_list[-1].covariances_ = gmm.covariances_"""
+							BICs.append(gmm.bic(data))
+
 						# Keep best model
 						if loglikelihood > best_loglikelihood:
 							best_loglikelihood = loglikelihood
 							if i_iter == 0:
 								list_of_GMMs.append(GMM.GaussianMixture(n_components=n_components))
+							BICs[-1] = gmm.bic(data)
 							list_of_GMMs[-1].weights_ = gmm.weights_
 							list_of_GMMs[-1].means_ = gmm.means_
 							list_of_GMMs[-1].covariances_ = gmm.covariances_
-					
-					#list_of_GMMs.append(tmp_GMM_list)
 
 		if self.stack_landscapes_:
 			if  self.max_n_components is None:
@@ -374,13 +366,16 @@ class FreeEnergy(object):
 		
 		# Plot projected data points
 		if show_data:
-			ax.scatter(self.data_[:,0],self.data_[:,1],s=10,c=[0.67,0.67,0.65])
 
 			# Plot projected data points
 			if self.labels_ is not None:
+				ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67, 0.67, 0.65])
 				ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0],
-						   edgecolor='k', cmap=my_cmap, label='Intermediate state')
+						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8)
 				plt.legend()
+			else:
+				ax.scatter(self.data_[:, 0], self.data_[:, 1], s=10, c=[0.67, 0.67, 0.65])
+
 			# Plot minimum pathways between states
 			if self.pathways_ is not None:
 				for p in self.pathways_:
