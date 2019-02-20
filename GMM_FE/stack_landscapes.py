@@ -27,7 +27,8 @@ class LandscapeStacker(object):
                 self.model_weights_ = 1.0 / self.n_models_ * np.ones(self.n_models_)
         else:
             self.model_weights_ = model_weights
-            print('Setting model weights: ' + str(model_weights))
+            self._sparisify_model()
+            print('Setting model weights: ' + str(self.model_weights_))
         self._set_n_component_list()
         return
 
