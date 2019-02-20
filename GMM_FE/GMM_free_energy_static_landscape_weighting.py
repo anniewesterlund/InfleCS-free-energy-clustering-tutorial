@@ -140,7 +140,7 @@ class FreeEnergy(object):
 		best_loglikelihood = -np.inf
 		list_of_GMMs = []
 		list_of_validation_data = []
-		BICs = []
+		ICs = []
 		n_points, n_dims = data.shape
 
 		# Get indices of training and validation datasets
@@ -154,10 +154,10 @@ class FreeEnergy(object):
 				if self.verbose_:
 					print('# Components = '+str(n_components))
 
-				if self.n_splits_ > 1:
+				if self.n_splits_ > 1 and not(self.stack_landscapes_):
 					loglikelihood = 0
 					for i_split in range(self.n_splits_):
-						gmm = GaussianMixture(n_components=n_components,tol=self.convergence_tol_)
+						gmm = GaussianMixture(n_components=n_components,tol=self.convergence_tol_,max_iter=1000)
 
 						training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
 
@@ -178,16 +178,24 @@ class FreeEnergy(object):
 						
 						gmm.fit(data)
 						loglikelihood = gmm.score(data)
-						# Compute average BIC over iterations
+						# Compute average AIC/BIC over iterations
 						if i_iter == 0:
-							BICs.append(gmm.bic(data))
+							if self.stack_landscapes_:
+								ICs.append(gmm.aic(data))
+							else:
+								ICs.append(gmm.bic(data))
 
 						# Keep best model
 						if loglikelihood > best_loglikelihood:
 							best_loglikelihood = loglikelihood
 							if i_iter == 0:
 								list_of_GMMs.append(GMM.GaussianMixture(n_components=n_components))
-							BICs[-1] = gmm.bic(data)
+
+							if self.stack_landscapes_:
+								ICs[-1] = gmm.aic(data)
+							else:
+								ICs[-1] = gmm.bic(data)
+
 							list_of_GMMs[-1].weights_ = gmm.weights_
 							list_of_GMMs[-1].means_ = gmm.means_
 							list_of_GMMs[-1].covariances_ = gmm.covariances_
@@ -198,20 +206,17 @@ class FreeEnergy(object):
 				gmm.fit(data)
 				list_of_GMMs.append(gmm)
 
-			BICs = np.asarray(BICs)
-			model_weights = np.exp(-0.5 *(BICs-BICs.min()))
+			ICs = np.asarray(ICs)
+			model_weights = np.exp(-0.5 *(ICs-ICs.min()))
 			model_weights /= model_weights.sum()
-
-			print(model_weights)
 
 			# Fit mixture of density estimators using the validation data
 			self.density_est_ = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs, n_splits=1,
 														convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_,
 														model_weights=model_weights)
 			self.density_est_.GMM_list_ = list_of_GMMs
-			#self.density_est_.fit()
-
 			density = self.density_est_.density(data_orig)
+		
 		else:
 			# Estimate FE with best number of components (deduced from cross-validation)
 			if self.n_splits_ > 1:
@@ -228,14 +233,12 @@ class FreeEnergy(object):
 						self.density_est_.means_ = gmm.means_
 						self.density_est_.covariances_ = gmm.covariances_
 			else:
-				BICs = np.asarray(BICs)
-				model_ind = BICs.argmin()
+				ICs = np.asarray(ICs)
+				model_ind = ICs.argmin()
 				gmm = list_of_GMMs[model_ind]
 				best_n_components = gmm.weights_.shape[0]
 				self.density_est_ = GMM.GaussianMixture(n_components=best_n_components)
-				#self.density_est_ = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs[model_ind], n_splits=1,
-				#										convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_, 
-				#										model_weights=1/len(list_of_GMMs[model_ind])*np.ones(len(list_of_GMMs[model_ind])))
+	
 				print('Identifying final model with ' + str(self.density_est_.n_components_) + ' components.')
 				
 				self.density_est_.weights_ = gmm.weights_
@@ -287,7 +290,7 @@ class FreeEnergy(object):
 		
 		return free_energy
 	
-	def evaluate_clustering(self, points, assign_transition_points=True):
+	def evaluate_clustering(self, points, assign_transition_points=False):
 		"""
 		Assign cluster indices to points based on precomputed density model clustering.
 		"""
@@ -300,7 +303,7 @@ class FreeEnergy(object):
 
 		return labels
 
-	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=True):
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False):
 		"""
 		Cluster points according to estimated density.
 		"""
@@ -369,7 +372,7 @@ class FreeEnergy(object):
 
 			# Plot projected data points
 			if self.labels_ is not None:
-				ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67, 0.67, 0.65])
+				ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67, 0.67, 0.65],alpha=0.6)
 				ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8)
 				plt.legend()
