@@ -28,8 +28,11 @@ class LandscapeStacker(object):
         else:
             self.model_weights_ = model_weights
             self._sparisify_model()
-            print('Setting model weights: ' + str(self.model_weights_))
+            print('Model weights: ' + str(self.model_weights_))
+            print('GMM list: '+str(self.GMM_list_))
+            
         self._set_n_component_list()
+        print('# Components in models: '+str(self.n_components_list_))
         return
 
     def objective_function(self,W):
@@ -82,7 +85,7 @@ class LandscapeStacker(object):
         """
         self.n_components_list_ = []
         for i_model in range(self.n_models_):
-            n_components = self.GMM_list_[i_model].weights_.shape[0]
+            n_components = self.GMM_list_[i_model*self.n_splits_].weights_.shape[0]
             self.n_components_list_.append(n_components)
         return
 
@@ -124,11 +127,12 @@ class LandscapeStacker(object):
         for i_model in range(self.n_models_):
             if self.model_weights_[i_model] > threshold:
                 new_weights.append(self.model_weights_[i_model])
-                new_models.append(self.GMM_list_[i_model*self.n_splits_])
+                for i_split in range(self.n_splits_):
+                    new_models.append(self.GMM_list_[i_model*self.n_splits_+i_split])
 
         self.n_models_ = n_models
         self.GMM_list_ = new_models
-
+        print(self.GMM_list_)
         self.model_weights_ = np.asarray(new_weights)
         self.model_weights_ /= self.model_weights_.sum()
         return

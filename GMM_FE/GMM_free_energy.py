@@ -248,7 +248,7 @@ class FreeEnergy(object):
 			density_est = GMM_FE.LandscapeStacker(data, list_of_validation_data, list_of_GMMs, n_splits=1,
 														convergence_tol=self.convergence_tol_, n_iterations=self.n_iterations_,
 														model_weights=model_weights)
-			density_est.GMM_list_ = list_of_GMMs
+			
 			density = density_est.density(data_orig)
 			if set_density_model:
 					self.density_est_ = density_est
@@ -408,6 +408,9 @@ class FreeEnergy(object):
 		if self.n_dims_ == 2:
 			plt.contourf(self.coords_[0], self.coords_[1], FE_landscape, n_contour_levels, cmap=my_cmap, vmin=0, vmax=vmax)
 			cb=plt.colorbar(label='[kcal/mol]')
+			text = cb.ax.yaxis.label
+			font = matplotlib.font_manager.FontProperties(size=fontsize-3)
+			text.set_font_properties(font)
 			cb.ax.tick_params(labelsize=fontsize-2)
 			ax.set_ylim([self.coords_[1].min(), self.coords_[1].max()])
 			plt.ylabel(ylabel, fontsize=fontsize - 2)
