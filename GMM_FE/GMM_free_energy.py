@@ -434,7 +434,7 @@ class FreeEnergy(object):
 					ax.scatter(self.data_[self.labels_==0], self.FE_points_[self.labels_==0], s=10, c=[0.67, 0.67, 0.65],alpha=0.6,zorder=3)
 					ax.scatter(self.data_[self.labels_>0], self.FE_points_[self.labels_>0], s=20, c=self.labels_[self.labels_>0],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8,zorder=4)
-				plt.legend(fontsize=14,facecolor=[0.2,0.2,0.2])
+				plt.legend(fontsize=14,facecolor=[0.9,0.9,0.92])
 			else:
 				if self.n_dims_ > 1:
 					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=10, c=[0.67, 0.67, 0.65])
@@ -444,7 +444,7 @@ class FreeEnergy(object):
 			if self.pathways_ is not None and self.dims > 1:
 				for p in self.pathways_:
 					ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
-				plt.legend(fontsize=14,facecolor=[0.2,0.2,0.2])
+				plt.legend(fontsize=14,facecolor=[0.9,0.9,0.92])
 			
 			# Plot cluster centers in landscape
 			if self.cluster_centers_ is not None:
