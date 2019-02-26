@@ -32,6 +32,7 @@ class LandscapeClustering():
 			else:
 				min_FE_inds[i_cluster-1] = np.nan
 				mask[i_cluster-1]=False
+				print('No point in cluster '+str(i_cluster))
 		
 		self.cluster_centers_ = min_FE_inds[mask].astype(int)
 		return self.cluster_centers_

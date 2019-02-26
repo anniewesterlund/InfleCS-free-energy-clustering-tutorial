@@ -278,7 +278,7 @@ class FreeEnergy(object):
 				best_n_components = gmm.weights_.shape[0]
 				density_est = GMM.GaussianMixture(n_components=best_n_components)
 	
-				print('Identifying final model with ' + str(self.density_est_.n_components_) + ' components.')
+				print('Identifying final model with ' + str(density_est.n_components_) + ' components.')
 				
 				density_est.weights_ = gmm.weights_
 				density_est.means_ = gmm.means_
@@ -389,17 +389,27 @@ class FreeEnergy(object):
 			return self.labels_, self.cluster_centers_
 
 
-	def visualize(self,title="Free energy landscape", fontsize=22, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False):
+	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False):
 		# Set custom colormaps
 		my_cmap = matplotlib.cm.get_cmap('jet')
 		my_cmap.set_over('white')
 		my_cmap_cont = matplotlib.colors.ListedColormap(['black'])
 		my_cmap_cont.set_over('white')
 
-		plt.rcParams['figure.figsize'] = [7, 6]
+		plt.rcParams['figure.figsize'] = [11, 10]
 		fig = plt.figure()
 		ax = fig.add_subplot(1, 1, 1)
 		ax.tick_params(labelsize=fontsize - 2)
+
+		plt.tick_params(axis='both', which='major', labelsize=fontsize-4)
+
+		for tick in ax.get_xticklabels():
+			tick.set_fontname("Serif")
+			tick.set_fontweight('light')
+		
+		for tick in ax.get_yticklabels():
+			tick.set_fontname("Serif")
+			tick.set_fontweight('light')
 
 		# Plot free energy landscape
 		FE_landscape = np.copy(self.FE_landscape_)
@@ -409,16 +419,21 @@ class FreeEnergy(object):
 			plt.contourf(self.coords_[0], self.coords_[1], FE_landscape, n_contour_levels, cmap=my_cmap, vmin=0, vmax=vmax)
 			cb=plt.colorbar(label='[kcal/mol]')
 			text = cb.ax.yaxis.label
-			font = matplotlib.font_manager.FontProperties(size=fontsize-3)
+			font = matplotlib.font_manager.FontProperties(size=fontsize-3,family='serif',weight='light')
 			text.set_font_properties(font)
 			cb.ax.tick_params(labelsize=fontsize-2)
+
+			for tick in cb.ax.get_yticklabels():
+				tick.set_fontname("Serif")
+				tick.set_fontweight('light')
+
 			ax.set_ylim([self.coords_[1].min(), self.coords_[1].max()])
-			plt.ylabel(ylabel, fontsize=fontsize - 2)
+			plt.ylabel(ylabel, fontsize=fontsize - 2,fontname='serif',fontweight='light')
 		elif self.n_dims_ == 1:
 			if self.standard_error_FE_ is not None:
 				plt.fill_between(self.coords_[0], FE_landscape - self.standard_error_FE_, FE_landscape + self.standard_error_FE_, color='k', alpha=0.2,zorder=2)
 			plt.plot(self.coords_[0], FE_landscape, linewidth=3,color='k',zorder=1)
-			plt.ylabel('Free energy [kcal/mol]',fontsize=fontsize-2)
+			plt.ylabel('Free energy [kcal/mol]',fontsize=fontsize-2,fontname='serif',fontweight='light')
 		else:
 			print('Plotting does not support > 2 dimensions')
 			return
@@ -430,39 +445,48 @@ class FreeEnergy(object):
 			# Plot projected data points
 			if self.labels_ is not None:
 				if self.n_dims_ > 1:
-					ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=10, c=[0.67, 0.67, 0.65],alpha=0.6)
-					ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=20, c=self.labels_[self.labels_>0],
+					ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=30, c=[0.67, 0.67, 0.65],alpha=0.6)
+					ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=50, c=self.labels_[self.labels_>0],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8)
 				else:
-					ax.scatter(self.data_[self.labels_==0], self.FE_points_[self.labels_==0], s=10, c=[0.67, 0.67, 0.65],alpha=0.6,zorder=3)
-					ax.scatter(self.data_[self.labels_>0], self.FE_points_[self.labels_>0], s=20, c=self.labels_[self.labels_>0],
+					ax.scatter(self.data_[self.labels_==0], self.FE_points_[self.labels_==0], s=30, c=[0.67, 0.67, 0.65],alpha=0.6,zorder=3)
+					ax.scatter(self.data_[self.labels_>0], self.FE_points_[self.labels_>0], s=50, c=self.labels_[self.labels_>0],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8,zorder=4)
-				plt.legend(fontsize=14,facecolor=[0.9,0.9,0.92])
+				if fontsize > 18:
+					plt.legend(fontsize=fontsize-10,facecolor=[0.9,0.9,0.92])
+				else:
+					plt.legend(fontsize=fontsize-4,facecolor=[0.9,0.9,0.92])
 			else:
 				if self.n_dims_ > 1:
-					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=10, c=[0.67, 0.67, 0.65])
+					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=[0.67, 0.67, 0.65])
 				else:
-					ax.scatter(self.data_, self.FE_points_[:, 1], s=10, c=[0.67, 0.67, 0.65])
+					ax.scatter(self.data_, self.FE_points_[:, 1], s=30, c=[0.67, 0.67, 0.65])
 			# Plot minimum pathways between states
 			if self.pathways_ is not None and self.dims > 1:
 				for p in self.pathways_:
 					ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
-				plt.legend(fontsize=14,facecolor=[0.9,0.9,0.92])
+				if fontsize > 18:
+					plt.legend(fontsize=fontsize-10,facecolor=[0.9,0.9,0.92])
+				else:
+					plt.legend(fontsize=fontsize-4,facecolor=[0.9,0.9,0.92])
 			
 			# Plot cluster centers in landscape
 			if self.cluster_centers_ is not None:
 				if self.n_dims_ > 1:
-					ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=30,
-						   linewidth=2, facecolor='',edgecolor='w', label='Cluster centers')
+					ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=80,
+						   linewidth=3, facecolor='',edgecolor='w', label='Cluster centers')
 				else:
-					ax.scatter(self.data_[self.cluster_centers_], self.FE_points_[self.cluster_centers_], marker='s', s=30,
-						   linewidth=2, facecolor='',edgecolor='w', label='Cluster centers',zorder=5)					
-				plt.legend(fontsize=14,facecolor=[0.9,0.9,0.92])
-		plt.title(title, fontsize=fontsize)
-		plt.xlabel(xlabel, fontsize=fontsize - 2)
+					ax.scatter(self.data_[self.cluster_centers_], self.FE_points_[self.cluster_centers_], marker='s', s=80,
+						   linewidth=3, facecolor='',edgecolor='w', label='Cluster centers',zorder=5)					
+				if fontsize > 18:
+					plt.legend(fontsize=fontsize-10,facecolor=[0.9,0.9,0.92])
+				else:
+					plt.legend(fontsize=fontsize-4,facecolor=[0.9,0.9,0.92])
+		plt.title(title, fontsize=fontsize,fontname='serif',fontweight='light')
+		plt.xlabel(xlabel, fontsize=fontsize - 2,fontname='serif',fontweight='light')
 		plt.rc('xtick', labelsize=fontsize-2)
 		plt.rc('ytick', labelsize=fontsize-2)
-
+		matplotlib.rc('font',family='Serif')
 
 
 		if savefig:

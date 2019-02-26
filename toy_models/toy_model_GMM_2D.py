@@ -1,6 +1,6 @@
 import numpy as np
 from GMM_FE.GMM import GaussianMixture
-from GMM_FE.GMM_free_energy_static_landscape_weighting import FreeEnergy
+from GMM_FE.GMM_free_energy import FreeEnergy
 
 class GMM2D(GaussianMixture):
 
