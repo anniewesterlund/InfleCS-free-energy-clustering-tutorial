@@ -366,8 +366,9 @@ class FreeEnergy(object):
 		if len(points.shape) == 1:
 			points = points[:,np.newaxis]
 		
-		if len(eval_points.shape) == 1:
-			eval_points = eval_points[:,np.newaxis]
+		if eval_points is not None:
+			if len(eval_points.shape) == 1:
+				eval_points = eval_points[:,np.newaxis]
 		
 		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
 

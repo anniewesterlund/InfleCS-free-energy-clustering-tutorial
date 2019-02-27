@@ -28,11 +28,26 @@ class MethodEvaluator(object):
             print('Toy model: '+str(toy_model)+' does not exist')
             sys.exit(0)
 		
-        self.cluster_scores_kmeans_ = None
-        self.cluster_scores_AW_ = None
-        self.cluster_scores_spectral_ = None
-        self.cluster_scores_GMM_ = None
-        self.cluster_scores_GMM_FE_min_ = None
+        self.cluster_score_ami_kmeans_ = None
+        self.cluster_score_ami_AW_ = None
+        self.cluster_score_ami_spectral_ = None
+		self.cluster_score_ami_density_peaks_ = None
+        self.cluster_score_ami_GMM_ = None
+        self.cluster_score_ami_GMM_FE_min_ = None
+
+        self.cluster_score_fm_kmeans_ = None
+        self.cluster_score_fm_AW_ = None
+        self.cluster_score_fm_spectral_ = None
+		self.cluster_score_fm_density_peaks_ = None
+        self.cluster_score_fm_GMM_ = None
+        self.cluster_score_fm_GMM_FE_min_ = None
+
+        self.cluster_score_vm_kmeans_ = None
+        self.cluster_score_vm_AW_ = None
+        self.cluster_score_vm_spectral_ = None
+		self.cluster_score_vm_density_peaks_ = None
+        self.cluster_score_vm_GMM_ = None
+        self.cluster_score_vm_GMM_FE_min_ = None
 
         self.convergence_tol_ = convergence_tol
 
@@ -61,7 +76,7 @@ class MethodEvaluator(object):
                                           convergence_tol=self.convergence_tol_)
         self.true_FE_.density_est_ = self.toy_model_
 
-        coords, self.true_density_ = self.true_FE_.density_landscape()
+        coords, self.true_density_ = self.true_FE_._density_landscape(self.toy_model_)
 
         # Compute true free energy
         FE_landscape = self.true_FE_._free_energy(self.true_density_)
@@ -89,18 +104,21 @@ class MethodEvaluator(object):
         self.cluster_score_ami_kmeans_ = np.zeros(n_runs)
         self.cluster_score_ami_AW_ = np.zeros(n_runs)
         self.cluster_score_ami_spectral_ = np.zeros(n_runs)
+		self.cluster_score_ami_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_ami_GMM_ = np.zeros(n_runs)
         self.cluster_score_ami_GMM_FE_min_ = np.zeros(n_runs)
 
         self.cluster_score_fm_kmeans_ = np.zeros(n_runs)
         self.cluster_score_fm_AW_ = np.zeros(n_runs)
         self.cluster_score_fm_spectral_ = np.zeros(n_runs)
+		self.cluster_score_fm_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_fm_GMM_ = np.zeros(n_runs)
         self.cluster_score_fm_GMM_FE_min_ = np.zeros(n_runs)
 
         self.cluster_score_vm_kmeans_ = np.zeros(n_runs)
         self.cluster_score_vm_AW_ = np.zeros(n_runs)
         self.cluster_score_vm_spectral_ = np.zeros(n_runs)
+		self.cluster_score_vm_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_vm_GMM_ = np.zeros(n_runs)
         self.cluster_score_vm_GMM_FE_min_ = np.zeros(n_runs)
 
