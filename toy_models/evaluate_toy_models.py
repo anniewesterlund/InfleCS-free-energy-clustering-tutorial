@@ -12,7 +12,7 @@ from sklearn.metrics.cluster import fowlkes_mallows_score
 
 class MethodEvaluator(object):
 
-    def __init__(self, toy_model='GMM_2D', x_lims=None, n_grids=30, convergence_tol=1e-4,verbose=False):
+    def __init__(self, toy_model='GMM_2D', x_lims=None, n_grids=30, convergence_tol=1e-4,verbose=False, presampled_data=None):
 
         if toy_model == 'GMM_2D':
             self.toy_model_ = tm.GMM2D()
@@ -31,21 +31,21 @@ class MethodEvaluator(object):
         self.cluster_score_ami_kmeans_ = None
         self.cluster_score_ami_AW_ = None
         self.cluster_score_ami_spectral_ = None
-		self.cluster_score_ami_density_peaks_ = None
+        self.cluster_score_ami_density_peaks_ = None
         self.cluster_score_ami_GMM_ = None
         self.cluster_score_ami_GMM_FE_min_ = None
 
         self.cluster_score_fm_kmeans_ = None
         self.cluster_score_fm_AW_ = None
         self.cluster_score_fm_spectral_ = None
-		self.cluster_score_fm_density_peaks_ = None
+        self.cluster_score_fm_density_peaks_ = None
         self.cluster_score_fm_GMM_ = None
         self.cluster_score_fm_GMM_FE_min_ = None
 
         self.cluster_score_vm_kmeans_ = None
         self.cluster_score_vm_AW_ = None
         self.cluster_score_vm_spectral_ = None
-		self.cluster_score_vm_density_peaks_ = None
+        self.cluster_score_vm_density_peaks_ = None
         self.cluster_score_vm_GMM_ = None
         self.cluster_score_vm_GMM_FE_min_ = None
 
@@ -53,6 +53,8 @@ class MethodEvaluator(object):
 
         self.x_lims_ = x_lims
         self.n_grids_ = n_grids
+
+        self.presampled_data = presampled_data
 
         self.true_FE_ = None
         self.true_density_ = None
@@ -93,7 +95,7 @@ class MethodEvaluator(object):
             self.true_labels_, _ = self.true_FE_.cluster(coords, np.zeros(self.test_set_.shape[0]), self.test_set_)
         return
 
-    def run_evaluation(self, n_runs, n_points, n_iterations=1, min_n_components=2, max_n_components=25,
+    def run_evaluation(self, n_runs=1, n_points=1000, n_iterations=1, min_n_components=2, max_n_components=25,
                        n_splits=3, save_data=False, file_label=''):
         """
         Run multiple free energy estimations and evaluate performance.
@@ -101,24 +103,29 @@ class MethodEvaluator(object):
         :return:
         """
 
+        if self.presampled_data is not None:
+            sampled_data = self.presampled_data[0]
+            true_clustering = self.presampled_data[1]
+            n_runs = sampled_data.shape[0]
+
         self.cluster_score_ami_kmeans_ = np.zeros(n_runs)
         self.cluster_score_ami_AW_ = np.zeros(n_runs)
         self.cluster_score_ami_spectral_ = np.zeros(n_runs)
-		self.cluster_score_ami_density_peaks_ = np.zeros(n_runs)
+        self.cluster_score_ami_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_ami_GMM_ = np.zeros(n_runs)
         self.cluster_score_ami_GMM_FE_min_ = np.zeros(n_runs)
 
         self.cluster_score_fm_kmeans_ = np.zeros(n_runs)
         self.cluster_score_fm_AW_ = np.zeros(n_runs)
         self.cluster_score_fm_spectral_ = np.zeros(n_runs)
-		self.cluster_score_fm_density_peaks_ = np.zeros(n_runs)
+        self.cluster_score_fm_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_fm_GMM_ = np.zeros(n_runs)
         self.cluster_score_fm_GMM_FE_min_ = np.zeros(n_runs)
 
         self.cluster_score_vm_kmeans_ = np.zeros(n_runs)
         self.cluster_score_vm_AW_ = np.zeros(n_runs)
         self.cluster_score_vm_spectral_ = np.zeros(n_runs)
-		self.cluster_score_vm_density_peaks_ = np.zeros(n_runs)
+        self.cluster_score_vm_density_peaks_ = np.zeros(n_runs)
         self.cluster_score_vm_GMM_ = np.zeros(n_runs)
         self.cluster_score_vm_GMM_FE_min_ = np.zeros(n_runs)
 
@@ -137,23 +144,31 @@ class MethodEvaluator(object):
         all_data = []
         for i_run in range(n_runs):
             print("Run: "+str(i_run+1)+'/'+str(n_runs))
-            # Sample data
-            data = self.toy_model_.sample(n_points)
+            
+            if self.presampled_data is None:
+				# Sample data
+            	data = self.toy_model_.sample(n_points)
+            else:
+                data = sampled_data[i_run]
+			
             all_data.append(data)
-
+			
             # Set data in model and estimate GMM density
             gmm_FE.data_ = data
             coords, est_FE_landsc, FE_points = gmm_FE.landscape()
 
             # Get true cluster labels
-            if hasattr(self.toy_model_, "assign_cluster_labels"):
-                self.true_labels_ = self.toy_model_.assign_cluster_labels(data)
+            if self.presampled_data is None:
+                if hasattr(self.toy_model_, "assign_cluster_labels"):
+                    self.true_labels_ = self.toy_model_.assign_cluster_labels(data)
+                else:
+                    print('Setting true labels.')
+                    self.true_labels_, _ = self.true_FE_.cluster(data, np.zeros(data.shape[0]))
             else:
-                print('Setting true labels.')
-                self.true_labels_, _ = self.true_FE_.cluster(data, np.zeros(data.shape[0]))
-
+                self.true_labels_ = true_clustering[i_run]
+			
             # Cluster data with different methods
-            self.FE_min_labels, _ = gmm_FE.cluster(data, FE_points)
+            self.FE_min_labels, _ = gmm_FE.cluster(data, FE_points, assign_transition_points=True)
             self.km_labels = km.cluster(data)
             self.aw_labels = aw.cluster(data)
             self.spectral_labels = spectral.cluster(data)
@@ -179,9 +194,10 @@ class MethodEvaluator(object):
             self.cluster_score_fm_kmeans_[i_run] = self._score_clustering(self.km_labels,'fm')
             self.cluster_score_fm_AW_[i_run] = self._score_clustering(self.aw_labels,'fm')
             self.cluster_score_fm_spectral_[i_run] = self._score_clustering(self.spectral_labels,'fm')
-
+		
         if save_data:
-            np.save('data_out/sampled_data_'+file_label+'.npy',all_data)
+            if self.presampled_data is None:
+                np.save('data_out/sampled_data_'+self.toy_model_.name+'.npy',all_data)
             np.save('data_out/cluster_score_fm_FE_min_'+self.toy_model_.name+'.npy',self.cluster_score_fm_GMM_FE_min_)
             np.save('data_out/cluster_score_fm_GMM_' + self.toy_model_.name + '.npy', self.cluster_score_fm_GMM_)
             np.save('data_out/cluster_score_fm_kmeans_' + self.toy_model_.name + '.npy', self.cluster_score_fm_kmeans_)
@@ -237,7 +253,6 @@ class MethodEvaluator(object):
 
         # Plot clustering score
 
-        # (Plot kinetics in case of HMM)
         plt.show()
 
         return
