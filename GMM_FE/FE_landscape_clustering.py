@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from scipy.optimize import fmin_cg
 import GMM_FE.cluster_density as cluster
@@ -167,6 +168,8 @@ class LandscapeClustering():
 		# neg definite => True, else => False
 		print('Computing Hessians.')
 		for i_point, x in enumerate(points):
+			sys.stdout.write("\r"+'Point: '+str(i_point+1)+'/'+str(points.shape[0]))
+			sys.stdout.flush()
 			if self.ensemble_of_GMMs:
 				hessian = np.zeros((n_dims,n_dims))
 				for i_model in range(n_models):
@@ -182,7 +185,7 @@ class LandscapeClustering():
 			# Check if Hessian is negative definite, the point is at a free energy minimum
 			if eigvals.max() < 0.0:
 				is_FE_min[i_point] = True
-		
+		print()
 		return is_FE_min
 
 	def cluster(self, density_models, points, eval_points=None):

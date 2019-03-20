@@ -397,7 +397,7 @@ class FreeEnergy(object):
 		my_cmap_cont = matplotlib.colors.ListedColormap(['black'])
 		my_cmap_cont.set_over('white')
 
-		plt.rcParams['figure.figsize'] = [11, 10]
+		plt.rcParams['figure.figsize'] = [13, 10]
 		fig = plt.figure()
 		ax = fig.add_subplot(1, 1, 1)
 		ax.tick_params(labelsize=fontsize - 2)
