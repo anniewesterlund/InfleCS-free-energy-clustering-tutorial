@@ -86,7 +86,7 @@ class LandscapeClustering():
 			counter += 1
 		return cl_inds_final
 
-	def _compute_gradients(self, density_model, points):
+	def _compute_gradients(self, density_model, points, inv_covs=None):
 		n_points = points.shape[0]
 		n_dims = points.shape[1]
 		n_components = density_model.n_components_
@@ -97,17 +97,23 @@ class LandscapeClustering():
 
 		gradients = np.zeros((n_points, n_dims))
 
-		inv_covs = [np.zeros((n_dims, n_dims))] * n_components
+		compute_inv_covs = False
+		if inv_covs is None:
+			inv_covs = [np.zeros((n_dims, n_dims))] * n_components
+			compute_inv_covs = True
+
 		for i_component in range(n_components):
-			inv_covs[i_component] = np.linalg.inv(covs[i_component])
+			if compute_inv_covs:
+				inv_covs[i_component] = np.linalg.inv(covs[i_component])
 
 			devs = points - means[i_component]
 			exp_deriv = -devs.dot(inv_covs[i_component])
 			for i_point in range(n_points):
 				gradients[i_point, :] += weights[i_component] * exp_deriv[i_point, :] * multivariate_normal.pdf(
 					points[i_point, :], mean=means[i_component], cov=covs[i_component])
-
-		return gradients, inv_covs
+		if compute_inv_covs:
+			return gradients, inv_covs
+		return gradients
 
 	def _compute_GMM_Hessian(self, density_model, x, inv_covs):
 		n_dims = x.shape[0]
@@ -133,7 +139,42 @@ class LandscapeClustering():
 
 		return hessian
 
-	def _Hessian_def(self, density_model, points):
+	def _compute_GMM_FE_Hessian(self, density_model, x, inv_covs):
+		n_dims = x.shape[0]
+		n_components = density_model.n_components_
+
+		means = density_model.means_
+		covs = density_model.covariances_
+		weights = density_model.weights_
+
+		hessian = np.zeros((n_dims, n_dims))
+
+		point = x[np.newaxis,:]
+		gradient = self._compute_gradients(density_model, point, inv_covs=inv_covs)
+		density = density_model.density(point)
+		density[density<1e-15] = 1e-15
+
+		for i_component in range(n_components):
+			devs = x - means[i_component]
+			exp_deriv = -devs.dot(inv_covs[i_component])
+
+			# Compute Hessian at current point
+			for i_dim in range(n_dims):
+				for j_dim in range(n_dims):
+					post_weight = weights[i_component] * multivariate_normal.pdf(x, mean=means[i_component],
+																				 cov=covs[i_component])
+					hessian[i_dim, j_dim] += post_weight * (
+								-inv_covs[i_component][i_dim, j_dim] + exp_deriv[i_dim] * exp_deriv[j_dim])
+
+		for i_dim in range(n_dims):
+			for j_dim in range(n_dims):
+				FE_hess = -hessian[i_dim, j_dim]/density
+				FE_hess -= 1/density**2 * gradient[0,i_dim]*gradient[0,j_dim]
+				hessian[i_dim, j_dim] = FE_hess
+
+		return hessian
+
+	def _Hessian_def(self, density_model, points, use_FE_landscape=False):
 		"""
 		Compute the Hessian in every point to check whether they belong to a 
 		free energy minimum or not.
@@ -165,8 +206,11 @@ class LandscapeClustering():
 				inv_covs[i_component] = np.linalg.inv(density_model.covariances_[i_component])
 
 		# Computing Hessian to determine whether point belongs to FE min or not
-		# neg definite => True, else => False
-		print('Computing Hessians.')
+		if use_FE_landscape:
+			print('Computing Hessians of free energy landscape.')
+		else:
+			print('Computing Hessians of density landscape.')
+		
 		for i_point, x in enumerate(points):
 			sys.stdout.write("\r"+'Point: '+str(i_point+1)+'/'+str(points.shape[0]))
 			sys.stdout.flush()
@@ -174,23 +218,35 @@ class LandscapeClustering():
 				hessian = np.zeros((n_dims,n_dims))
 				for i_model in range(n_models):
 					if density_model.model_weights_[i_model] > 0:
-						hessian += density_model.model_weights_[i_model]*self._compute_GMM_Hessian(density_model.GMM_list_[i_model],
+						if use_FE_landscape:
+							hessian += density_model.model_weights_[i_model] * self._compute_GMM_FE_Hessian(
+								density_model.GMM_list_[i_model], x, all_inv_covs[i_model])
+						else:
+							hessian += density_model.model_weights_[i_model]*self._compute_GMM_Hessian(density_model.GMM_list_[i_model],
 																							   x, all_inv_covs[i_model])
 			else:
-				hessian = self._compute_GMM_Hessian(density_model, x, inv_covs)
+				if use_FE_landscape:
+					hessian = self._compute_GMM_FE_Hessian(density_model, x, inv_covs)
+				else:
+					hessian = self._compute_GMM_Hessian(density_model, x, inv_covs)
 			
 			# Compute Hessian eigenvalues
 			eigvals = np.linalg.eigvals(hessian)
-						
-			# Check if Hessian is negative definite, the point is at a free energy minimum
-			if eigvals.max() < 0.0:
-				is_FE_min[i_point] = True
+
+			if use_FE_landscape:
+				# Check: if Hessian is positive definite => the point is at a free energy minimum
+				if eigvals.min() > 0.0:
+					is_FE_min[i_point] = True
+			else:
+				# Check: if Hessian is negative definite => the point is at a density maximum
+				if eigvals.max() < 0.0:
+					is_FE_min[i_point] = True
 		print()
 		return is_FE_min
 
-	def cluster(self, density_models, points, eval_points=None):
+	def cluster(self, density_models, points, eval_points=None, use_FE_landscape=False):
 		# Indicate whether points are at free energy minimum or not
-		is_FE_min = self._Hessian_def(density_models, points)
+		is_FE_min = self._Hessian_def(density_models, points, use_FE_landscape=use_FE_landscape)
 		self.grid_points_=points
 		# Cluster free energy landscape
 		self.clusterer_ = cluster.ClusterDensity(points, eval_points)

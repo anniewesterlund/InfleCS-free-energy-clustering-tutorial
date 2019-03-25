@@ -350,7 +350,7 @@ class FreeEnergy(object):
 
 		return labels
 
-	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False):
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False,use_FE_landscape=False):
 		"""
 		Cluster points according to estimated density.
 		"""
@@ -370,7 +370,7 @@ class FreeEnergy(object):
 			if len(eval_points.shape) == 1:
 				eval_points = eval_points[:,np.newaxis]
 		
-		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
+		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points,use_FE_landscape=use_FE_landscape)
 
 		if eval_points is not None:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(eval_points, self.labels_, free_energies)
@@ -390,14 +390,14 @@ class FreeEnergy(object):
 			return self.labels_, self.cluster_centers_
 
 
-	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False):
+	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False, figsize= [12, 10]):
 		# Set custom colormaps
 		my_cmap = matplotlib.cm.get_cmap('jet')
 		my_cmap.set_over('white')
 		my_cmap_cont = matplotlib.colors.ListedColormap(['black'])
 		my_cmap_cont.set_over('white')
 
-		plt.rcParams['figure.figsize'] = [13, 10]
+		plt.rcParams['figure.figsize'] = figsize
 		fig = plt.figure()
 		ax = fig.add_subplot(1, 1, 1)
 		ax.tick_params(labelsize=fontsize - 2)
@@ -491,6 +491,7 @@ class FreeEnergy(object):
 
 
 		if savefig:
+			plt.savefig(title + '.svg')
 			plt.savefig(title + '.eps')
 			plt.savefig(title + '.png')
 		return
