@@ -389,6 +389,24 @@ class FreeEnergy(object):
 		else:
 			return self.labels_, self.cluster_centers_
 
+	def pathways(self, states_from, states_to,n_points=100, convergence_tol=1e-4, step_size=1e-3):
+		"""
+		Calculate minimum pathways between points (indices) in states_from and states_to.
+		:param states_from:
+		:param states_to:
+		:param n_points:
+		:param convergence_tol:
+		:param step_size:
+		:return:
+		"""
+		pathway_estimator = GMM_FE.FreeEnergyPathways(self.density_est_, self.data_, self.temperature_,
+													  n_points=n_points, convergence_tol=convergence_tol,
+													  step_size=step_size, ensemble_of_GMMs=self.stack_landscapes_)
+		self.pathways_ = []
+		for from_ind, to_ind in zip(states_from,states_to):
+			self.pathways_.append(pathway_estimator.minimum_pathway(from_ind, to_ind))
+
+		return
 
 	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False, figsize= [12, 10]):
 		# Set custom colormaps

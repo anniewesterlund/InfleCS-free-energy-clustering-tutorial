@@ -38,16 +38,6 @@ class LandscapeClustering():
 		self.cluster_centers_ = min_FE_inds[mask].astype(int)
 		return self.cluster_centers_
 
-	def minimization_fun(self, x, *args):
-		density_model,_ = args
-		score = -density_model.density(x[np.newaxis,:])
-		return score
-
-	def minimization_grad(self, x, *args):
-		density_model,_ = args
-		grad,_ = self._compute_gradients(density_model, x[np.newaxis,:])
-		return -np.ravel(grad)
-
 	def assign_transition_points(self, cluster_indices, points, density_model):
 		"""
 		Assign cluster indices to transition points by maximizing density towards local maximum and use this to assign
@@ -169,7 +159,7 @@ class LandscapeClustering():
 		for i_dim in range(n_dims):
 			for j_dim in range(n_dims):
 				FE_hess = -hessian[i_dim, j_dim]/density
-				FE_hess -= 1/density**2 * gradient[0,i_dim]*gradient[0,j_dim]
+				FE_hess -= 1.0/density**2 * gradient[0,i_dim]*gradient[0,j_dim]
 				hessian[i_dim, j_dim] = FE_hess
 
 		return hessian
@@ -210,7 +200,7 @@ class LandscapeClustering():
 			print('Computing Hessians of free energy landscape.')
 		else:
 			print('Computing Hessians of density landscape.')
-		
+
 		for i_point, x in enumerate(points):
 			sys.stdout.write("\r"+'Point: '+str(i_point+1)+'/'+str(points.shape[0]))
 			sys.stdout.flush()
