@@ -40,7 +40,7 @@ def get_train_validation_set(data, train_ind, val_inds):
     """
     Get the train and test set given their indices.
     """
-    training_data = data[train_ind, :]
-    validation_data = data[val_inds, :]
+    training_data = data[train_ind]
+    validation_data = data[val_inds]
 
     return training_data, validation_data

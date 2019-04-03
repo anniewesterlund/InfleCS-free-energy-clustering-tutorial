@@ -168,7 +168,7 @@ class MethodEvaluator(object):
                 self.true_labels_ = true_clustering[i_run]
 			
             # Cluster data with different methods
-            self.FE_min_labels, _ = gmm_FE.cluster(data, FE_points, assign_transition_points=True)
+            self.FE_min_labels, _ = gmm_FE.cluster(data, FE_points, assign_transition_points=True, use_FE_landscape=True)
             self.km_labels = km.cluster(data)
             self.aw_labels = aw.cluster(data)
             self.spectral_labels = spectral.cluster(data)

@@ -48,11 +48,9 @@ class LandscapeClustering():
 		cl_inds_final = np.copy(cluster_indices)
 		transition_point_inds = np.where(cluster_indices==0)[0]
 		n_assigned = np.sum(cluster_indices>0)
-		assigned_points = points[0:n_assigned,:]
 
 		# Sort points from higher to lower density
 		density_all = density_model.density(points)
-		density_all[transition_point_inds] = -1
 		densities_trans_points = density_all[transition_point_inds]
 
 		# Sort transition points in decending density order (assign cluster index to highest density points first)
