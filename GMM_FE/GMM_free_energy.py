@@ -11,9 +11,8 @@ import matplotlib.pyplot as plt
 
 class FreeEnergy(object):
 
-	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0,
-				 n_grids=50, n_splits=1, shuffle_data=False, n_iterations=1, convergence_tol=1e-4, stack_landscapes=False,
-				 verbose=True, test_set_perc=0.0, data_weights=None, bias_factors=None):
+	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0, n_grids=50,
+				 n_splits=1, shuffle_data=False, n_iterations=1, convergence_tol=1e-4, stack_landscapes=False, verbose=True, test_set_perc=0.0):
 		"""
 		Class for computing free energy landscape in [kcal/mol].
 		- observed_data has dimensionality [N x d].
@@ -32,7 +31,6 @@ class FreeEnergy(object):
 		self.FE_points_ = None
 		self.FE_landscape_ = None
 		self.coords_ = None
-		self.min_FE_ = None
 
 		self.cl_ = None # Clustering object
 		self.labels_ = None
@@ -53,20 +51,13 @@ class FreeEnergy(object):
 				self.n_dims_ = 1
 
 		self.temperature_ = temperature # [K]
-		self.boltzmann_constant_ = 0.0019872041 # [kcal/(mol K)]
+		self.boltzmann_constant = 0.0019872041 # [kcal/(mol K)]
 		self.density_est_ = None
 		self.standard_error_FE_ = None
 		self.nx_ = n_grids
 		self.n_grids_ = [self.nx_]*self.n_dims_
 		self.test_set_perc_ = test_set_perc
 		self.verbose_ = verbose
-		self.data_weights_ = data_weights
-		self.bias_factors_ = bias_factors
-
-		if data_weights is not None or bias_factors is not None:
-			use_data_weights = True
-		else:
-			use_data_weights = False
 
 		self.test_set_loglikelihood = None
 		if verbose:
@@ -82,7 +73,6 @@ class FreeEnergy(object):
 			print('   min_n_components = ' + str(min_n_components))
 			print('   max_n_components = ' + str(max_n_components))
 			print('   n_components_step = ' + str(n_components_step))
-			print('   Using weighted data: ' + str(use_data_weights))
 			print('*----------------------------------------------------------------------------*')
 		return
 
@@ -108,7 +98,7 @@ class FreeEnergy(object):
 			coords = self.coords_
 		
 		if self.n_dims_ == 1:
-			densities = density_est.density(coords[0][:,np.newaxis])
+			densities = density_est.density(coords[0])
 			return coords, densities
 		
 		densities = np.zeros(self.n_grids_)
@@ -126,7 +116,7 @@ class FreeEnergy(object):
 
 	def _free_energy(self,density):
 		density[density < 1e-8] = 1e-8
-		FE = -self.temperature_ * self.boltzmann_constant_ * np.log(density)
+		FE = -self.temperature_ * self.boltzmann_constant * np.log(density)
 		return FE
 
 	def standard_error(self, n_data_blocks=3):
@@ -158,57 +148,6 @@ class FreeEnergy(object):
 		print('Standard error estimation done.')
 		return self.standard_error_FE_
 
-	def _train_GMM(self, data, n_components, train_inds=None, val_inds=None, loglikelihood=0):
-		"""
-		Perform one training of GMM.
-		:param data:
-		:param n_components:
-		:return:
-		"""
-
-		if train_inds is not None and val_inds is not None:
-			training_data, validation_data = CV.get_train_validation_set(data, train_inds, val_inds)
-		else:
-			training_data = np.copy(data)
-			validation_data = np.copy(data)
-
-		if self.data_weights_ is None and self.bias_factors_ is None:
-			gmm = GaussianMixture(n_components=n_components, tol=self.convergence_tol_)
-
-			# Train model on the current training data
-			gmm.fit(training_data)
-
-			# Check log-likelihood of validation data
-			loglikelihood += gmm.score(validation_data)
-		else:
-			gmm = GMM.GaussianMixture(n_components=n_components, convergence_tol=self.convergence_tol_,verbose=self.verbose_)
-
-			training_data_weights = self.data_weights_
-			validation_data_weights = self.data_weights_
-			training_bias_factors = self.bias_factors_
-
-			if train_inds is not None and val_inds is not None:
-				if self.data_weights_ is not None:
-					training_data_weights, validation_data_weights = CV.get_train_validation_set(self.data_weights_,
-																								 train_inds, val_inds)
-
-				if self.bias_factors_ is not None:
-					training_bias_factors, validation_bias_factors = CV.get_train_validation_set(self.bias_factors_,
-																								 train_inds, val_inds)
-
-			# Train model on the current training data
-			gmm.fit(training_data, data_weights=training_data_weights, bias_factors=training_bias_factors)
-
-
-			if training_bias_factors is not None and train_inds is not None and val_inds is not None:
-				# Compute the weights of validation data using the validation data bias factors
-				validation_data_weights = gmm.compute_data_weights(validation_data, validation_bias_factors)
-
-			# Check log-likelihood of validation data
-			loglikelihood += gmm.loglikelihood(validation_data, data_weights=validation_data_weights)
-
-		return gmm, loglikelihood
-
 	def _fit_FE(self, data, set_density_model=True):
 		"""
 		Fit density to data points.
@@ -221,13 +160,9 @@ class FreeEnergy(object):
 		# Extract test set from the dataset
 		n_points_test = int(self.test_set_perc_*data.shape[0])
 		data_orig = np.copy(data)
-		data_weights_orig = np.copy(self.data_weights_)
-
 		if n_points_test > 0:
 			test_data = data[-n_points_test::,:]
 			data = np.copy(data[0:-n_points_test, :])
-			if self.data_weights_ is not None:
-				self.data_weights_ = np.copy(self.data_weights_[0:-n_points_test,:])
 		else:
 			test_data = np.zeros((0,self.n_dims_))
 
@@ -236,13 +171,11 @@ class FreeEnergy(object):
 		else:
 			print('Estimating density with GMM.')
 
-		if self.data_weights_ is not None:
-			print('Using weighted data to estimate GMM.')
-
 		best_loglikelihood = -np.inf
 		list_of_GMMs = []
 		list_of_validation_data = []
 		ICs = []
+		n_points, n_dims = data.shape
 
 		# Get indices of training and validation datasets
 		if self.n_splits_ > 1:
@@ -258,7 +191,15 @@ class FreeEnergy(object):
 				if self.n_splits_ > 1 and not(self.stack_landscapes_):
 					loglikelihood = 0
 					for i_split in range(self.n_splits_):
-						gmm, loglikelihood = self._train_GMM(data, n_components, train_inds[i_split], val_inds[i_split], loglikelihood)
+						gmm = GaussianMixture(n_components=n_components,tol=self.convergence_tol_,max_iter=1000)
+
+						training_data, validation_data = CV.get_train_validation_set(data, train_inds[i_split], val_inds[i_split])
+
+						# Train model on the current training data
+						gmm.fit(training_data)
+
+						# Check log-likelihood of validation data
+						loglikelihood += gmm.score(validation_data)
 
 					# Keep best model
 					if loglikelihood > best_loglikelihood:
@@ -267,18 +208,10 @@ class FreeEnergy(object):
 				else:
 					best_loglikelihood = -np.inf
 					for i_iter in range(self.n_iterations_):
-						# Train GMM
-						gmm, loglikelihood = self._train_GMM(data, n_components)
-
-						if self.data_weights_ is not None:
-							# Move over to new GMM object
-							new_gmm = GaussianMixture(n_components=n_components,max_iter=1)
-							new_gmm.fit(data)	# Fit is needed before calling aic or bic. Note that max_iter=1.
-							new_gmm.means_ = gmm.means_
-							new_gmm.covariances_ = gmm.covariances_
-							new_gmm.weights_ = gmm.weights_
-							gmm = new_gmm
-
+						gmm = GaussianMixture(n_components=n_components, tol=self.convergence_tol_)
+						
+						gmm.fit(data)
+						loglikelihood = gmm.score(data)
 						# Compute average AIC/BIC over iterations
 						if i_iter == 0:
 							if self.stack_landscapes_:
@@ -303,7 +236,8 @@ class FreeEnergy(object):
 
 		if self.stack_landscapes_:
 			if  self.max_n_components is None:
-				gmm, _ = self._train_GMM(data, self.min_n_components)
+				gmm = GMM.GaussianMixture(n_components=self.min_n_components,convergence_tol=self.convergence_tol_)
+				gmm.fit(data)
 				list_of_GMMs.append(gmm)
 
 			ICs = np.asarray(ICs)
@@ -322,17 +256,21 @@ class FreeEnergy(object):
 			# Estimate FE with best number of components (deduced from cross-validation)
 			if self.n_splits_ > 1:
 				print('Training final model with ' + str(best_n_components) + ' components.')
-				best_loglikelihood = -np.inf
+				
 				density_est = GMM.GaussianMixture(n_components=best_n_components)
 				# Fit multiple times to
 				for i_iter in range(self.n_iterations_):
-					gmm, loglikelihood = self._train_GMM(data, best_n_components)
-
+					gmm = GaussianMixture(n_components=best_n_components,tol=self.convergence_tol_)
+					gmm.fit(data)
+					loglikelihood = gmm.score(data)
 					if  loglikelihood > best_loglikelihood:
 						best_loglikelihood = loglikelihood
 						density_est.weights_ = gmm.weights_
 						density_est.means_ = gmm.means_
 						density_est.covariances_ = gmm.covariances_
+				
+				if set_density_model:
+					self.density_est_ = density_est
 			else:
 				ICs = np.asarray(ICs)
 				model_ind = ICs.argmin()
@@ -367,7 +305,7 @@ class FreeEnergy(object):
 		their corresponding free energy.
 		"""
 
-		if len(self.data_.shape) == 1:
+		if self.n_dims_ == 1:
 			FE_points = self._fit_FE(self.data_[:,np.newaxis])
 		else:
 			FE_points = self._fit_FE(self.data_)
@@ -378,9 +316,9 @@ class FreeEnergy(object):
 		FE_landscape = self._free_energy(density)
 
 		# Shift to zero
-		self.min_FE_ = np.min(FE_landscape)
-		FE_landscape = FE_landscape-self.min_FE_
-		FE_points = FE_points-self.min_FE_
+		min_FE = np.min(FE_landscape)
+		FE_landscape = FE_landscape-min_FE
+		FE_points = FE_points-min_FE
 
 		self.FE_points_ = FE_points
 		self.FE_landscape_ = FE_landscape
@@ -412,7 +350,7 @@ class FreeEnergy(object):
 
 		return labels
 
-	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False,use_FE_landscape=False):
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False):
 		"""
 		Cluster points according to estimated density.
 		"""
@@ -428,11 +366,10 @@ class FreeEnergy(object):
 		if len(points.shape) == 1:
 			points = points[:,np.newaxis]
 		
-		if eval_points is not None:
-			if len(eval_points.shape) == 1:
-				eval_points = eval_points[:,np.newaxis]
+		if len(eval_points.shape) == 1:
+			eval_points = eval_points[:,np.newaxis]
 		
-		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points,use_FE_landscape=use_FE_landscape)
+		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points)
 
 		if eval_points is not None:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(eval_points, self.labels_, free_energies)
@@ -451,35 +388,15 @@ class FreeEnergy(object):
 		else:
 			return self.labels_, self.cluster_centers_
 
-	def pathways(self, states_from, states_to,n_points=10, convergence_tol=1e-1, step_size=1e-3, max_iter=100):
-		"""
-		Calculate minimum pathways between points (indices) in states_from and states_to.
-		:param states_from:
-		:param states_to:
-		:param n_points:
-		:param convergence_tol:
-		:param step_size:
-		:return:
-		"""
-		pathway_estimator = GMM_FE.FreeEnergyPathways(self.density_est_, self.data_, self.temperature_,
-													  n_points=n_points, convergence_tol=convergence_tol,
-													  step_size=step_size, ensemble_of_GMMs=self.stack_landscapes_,
-													  max_iter=max_iter)
-		self.pathways_ = []
-		for from_ind, to_ind in zip(states_from,states_to):
-			self.pathways_.append(pathway_estimator.minimum_pathway(from_ind, to_ind))
 
-		return
-
-	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5,
-				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape'):
+	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5, n_contour_levels=15, show_data=False):
 		# Set custom colormaps
 		my_cmap = matplotlib.cm.get_cmap('jet')
 		my_cmap.set_over('white')
 		my_cmap_cont = matplotlib.colors.ListedColormap(['black'])
 		my_cmap_cont.set_over('white')
 
-		plt.rcParams['figure.figsize'] = figsize
+		plt.rcParams['figure.figsize'] = [11, 10]
 		fig = plt.figure()
 		ax = fig.add_subplot(1, 1, 1)
 		ax.tick_params(labelsize=fontsize - 2)
@@ -529,7 +446,7 @@ class FreeEnergy(object):
 			if self.labels_ is not None:
 				if self.n_dims_ > 1:
 					ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=30, c=[0.67, 0.67, 0.65],alpha=0.6)
-					ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=70, c=self.labels_[self.labels_>0],
+					ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=50, c=self.labels_[self.labels_>0],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8)
 				else:
 					ax.scatter(self.data_[self.labels_==0], self.FE_points_[self.labels_==0], s=30, c=[0.67, 0.67, 0.65],alpha=0.6,zorder=3)
@@ -544,11 +461,10 @@ class FreeEnergy(object):
 					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=[0.67, 0.67, 0.65])
 				else:
 					ax.scatter(self.data_, self.FE_points_[:, 1], s=30, c=[0.67, 0.67, 0.65])
-
 			# Plot minimum pathways between states
-			if self.pathways_ is not None and self.n_dims_ > 1:
+			if self.pathways_ is not None and self.dims > 1:
 				for p in self.pathways_:
-					ax.plot(p[:, 0], p[:, 1], color=[1.0,0.85,0.87], linewidth=5, marker='', label='Pathway')
+					ax.plot(p[:, 0], p[:, 1], color='k', linewidth=2, marker='o', label='Pathway')
 				if fontsize > 18:
 					plt.legend(fontsize=fontsize-10,facecolor=[0.9,0.9,0.92])
 				else:
@@ -574,7 +490,6 @@ class FreeEnergy(object):
 
 
 		if savefig:
-			plt.savefig(filename + '.svg')
-			plt.savefig(filename + '.eps')
-			plt.savefig(filename + '.png')
+			plt.savefig(title + '.eps')
+			plt.savefig(title + '.png')
 		return
