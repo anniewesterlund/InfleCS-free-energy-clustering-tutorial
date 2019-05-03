@@ -156,8 +156,7 @@ class LandscapeClustering():
 
 		for i_dim in range(n_dims):
 			for j_dim in range(n_dims):
-				FE_hess = -hessian[i_dim, j_dim]/density
-				FE_hess -= 1.0/density**2 * gradient[0,i_dim]*gradient[0,j_dim]
+				FE_hess = 1.0/density**2 * gradient[0,i_dim]*gradient[0,j_dim]-hessian[i_dim, j_dim]/density
 				hessian[i_dim, j_dim] = FE_hess
 
 		return hessian
