@@ -108,10 +108,11 @@ class GaussianMixture():
 			normal_density = multivariate_normal.pdf(x, mean=self.means_[i_component], cov=self.covariances_[i_component])
 			gamma[i_component,:] = self.weights_[i_component]*normal_density
 		
-		if data_weights is not None:
-			gamma = np.multiply(gamma,data_weights)
+		gamma /= np.sum(gamma,axis=0)			
 		
-		gamma /= np.sum(gamma,axis=0)		
+		if data_weights is not None:
+			gamma = np.multiply(gamma,data_weights)	
+		
 		return gamma
 	
 	def _maximization(self,x, gamma):
