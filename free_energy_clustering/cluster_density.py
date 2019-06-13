@@ -9,50 +9,54 @@ class ClusterDensity(object):
 		self.points_ = eval_points
 		self.grid_cluster_inds_ = None
 		return
-
+	
 	def _construct_components(self,distance_matrix, is_FE_min, use_transition_matrix=False):
 		# Build subgraphs with connected components of the isolated FE minima
 		print('Constructing connected components.')
 		n_points = distance_matrix.shape[0]
-		sort_inds = np.argsort(distance_matrix,axis=1)
-	
+		
 		graph = np.zeros((n_points,n_points))
 		
 		if use_transition_matrix:
-			graph = 1*(distance_matrix > 0)
-		else:
-			for i in range(n_points):
-				if is_FE_min[i]:
-					check_points = []
-					neighbors = sort_inds[i,:]
-					k_neighbors=1
-			
-					# Add neighbors until another potential component is reached
-					for j in range(k_neighbors,n_points):
-						current_neighbor = neighbors[j]
-						if is_FE_min[current_neighbor]:
-					
-							neighbor_distance = distance_matrix[i,current_neighbor]
-					
-							if len(check_points) > 2:
-								check_point_distances = distance_matrix[current_neighbor,np.asarray(check_points)]
-								is_smaller_dist = check_point_distances < neighbor_distance
-								if np.sum(is_smaller_dist) > 0:
-									# A non-component point is closer to both the current point and 
-									# the other component point => the two component points are not neighbors
-									break;
-					
-							# Add connection between neighbors
-							graph[i,current_neighbor] = 1	
-							# Enforce symmetry
-							graph[current_neighbor,i] = 1			
-						else:
-							check_points.append(current_neighbor);
+			# Set distance matrix to information distance of transition matrix: 
+			# Kinetically close states have high transition probability but should have low distance
+			distance_matrix = -np.log(distance_matrix+1e-9)
+		
+		# Sort distances in ascending order
+		sort_inds = np.argsort(distance_matrix,axis=1)
+		
+		for i in range(n_points):
+			if is_FE_min[i]:
+				check_points = []
+				neighbors = sort_inds[i,:]
+				k_neighbors=1
+				
+				# Add neighbors until another potential component is reached
+				for j in range(k_neighbors,n_points):
+					current_neighbor = neighbors[j]
+					if is_FE_min[current_neighbor]:
+				
+						neighbor_distance = distance_matrix[i,current_neighbor]
+				
+						if len(check_points) > 2:
+							check_point_distances = distance_matrix[current_neighbor,np.asarray(check_points)]
+							is_smaller_dist = check_point_distances < neighbor_distance
+							if np.sum(is_smaller_dist) > 0:
+								# A non-component point is closer to both the current point and 
+								# the other component point => the two component points are not neighbors
+								break;
+				
+						# Add connection between neighbors
+						graph[i,current_neighbor] = 1	
+						# Enforce symmetry
+						graph[current_neighbor,i] = 1			
+					else:
+						check_points.append(current_neighbor)
 	
 		# Sparsify graph to contain only the connected components
 		graph = graph[is_FE_min,:]
 		graph = graph[:,is_FE_min]
-		
+
 		return graph
 
 	def _find_connected_components(self,graph):
@@ -105,6 +109,7 @@ class ClusterDensity(object):
 		if transition_matrix is None:
 			graph = self._construct_components(cdist(self.grid_points_,self.grid_points_), is_FE_min)
 		else:
+			print('Using transition probabilities as distances.')
 			graph = self._construct_components(transition_matrix, is_FE_min, use_transition_matrix=True)
 		
 		print('# Graph connections: '+str(np.sum(graph)))
