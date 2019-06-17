@@ -8,12 +8,13 @@ import free_energy_clustering as FEC
 
 import matplotlib
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 class FreeEnergyClustering(object):
 
 	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0,
 				 n_grids=50, n_splits=1, shuffle_data=False, n_iterations=1, convergence_tol=1e-4, stack_landscapes=False,
-				 verbose=True, test_set_perc=0.0, data_weights=None, bias_factors=None, transition_matrix=None):
+				 verbose=True, test_set_perc=0.0, data_weights=None, bias_factors=None):
 		"""
 		Class for computing free energy landscape in [kcal/mol].
 		- observed_data has dimensionality [N x d].
@@ -64,7 +65,6 @@ class FreeEnergyClustering(object):
 		self.verbose_ = verbose
 		self.data_weights_ = data_weights
 		self.bias_factors_ = bias_factors
-		self.transition_matrix_ = transition_matrix 
 		
 		if data_weights is not None or bias_factors is not None:
 			use_data_weights = True
@@ -89,8 +89,6 @@ class FreeEnergyClustering(object):
 			print('   max_n_components = ' + str(max_n_components))
 			print('   n_components_step = ' + str(n_components_step))			
 			print('   Using weighted data: ' + str(use_data_weights))
-			if self.transition_matrix_ is not None:
-				print('   Using input transition matrix when clustering.')
 			print('*----------------------------------------------------------------------------*')
 		return
 
@@ -449,14 +447,17 @@ class FreeEnergyClustering(object):
 
 		return labels
 
-	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False,use_FE_landscape=False):
+	def cluster(self, points, free_energies, eval_points=None, return_center_coords=False, assign_transition_points=False,use_FE_landscape=False, unravel_grid=True, transition_matrix=None):
 		"""
 		Cluster points according to estimated density.
 		"""
+
+		self.transition_matrix_ = transition_matrix
+
 		print('Clustering free energy landscape...')
 		self.cl_ = FEC.LandscapeClustering(self.stack_landscapes_)
 		
-		if eval_points is not None:
+		if eval_points is not None and unravel_grid:
 			tmp_points = []
 			for x in points:
 				tmp_points.append(np.ravel(x))
@@ -470,14 +471,14 @@ class FreeEnergyClustering(object):
 				eval_points = eval_points[:,np.newaxis]
 		
 		self.labels_, self.is_FE_min = self.cl_.cluster(self.density_est_, points, eval_points=eval_points, use_FE_landscape=use_FE_landscape, transition_matrix=self.transition_matrix_)
-
+		
 		self.core_labels_ = np.copy(self.labels_)
-
+		
 		if eval_points is not None:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(eval_points, self.labels_, free_energies)
 		else:
 			self.cluster_centers_ = self.cl_.get_cluster_representative(points, self.labels_, free_energies)
-
+		
 		if assign_transition_points:
 			if eval_points is not None:
 				self.labels_ = self.cl_.assign_transition_points(self.labels_, eval_points, self.density_est_)
@@ -510,8 +511,13 @@ class FreeEnergyClustering(object):
 
 		return
 
-	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', vmax=7.5,
+	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', zlabel='z', vmax=7.5,
 				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape'):
+
+		if self.n_dims_ > 3:
+			print('Plotting does not support > 3 dimensions')
+			return
+		
 		# Set custom colormaps
 		my_cmap = matplotlib.cm.get_cmap('jet')
 		my_cmap.set_over('white')
@@ -520,7 +526,10 @@ class FreeEnergyClustering(object):
 
 		plt.rcParams['figure.figsize'] = figsize
 		fig = plt.figure()
-		ax = fig.add_subplot(1, 1, 1)
+		if self.n_dims_ < 3:
+			ax = fig.add_subplot(1, 1, 1)
+		else:
+			ax = fig.add_subplot(111, projection='3d')
 		ax.tick_params(labelsize=fontsize - 2)
 
 		plt.tick_params(axis='both', which='major', labelsize=fontsize-4)
@@ -557,12 +566,24 @@ class FreeEnergyClustering(object):
 			plt.plot(self.coords_[0], FE_landscape, linewidth=3,color='k',zorder=1)
 			plt.ylabel('Free energy [kcal/mol]',fontsize=fontsize-2,fontname='serif',fontweight='light')
 		else:
-			print('Plotting does not support > 2 dimensions')
-			return
+			sc = ax.scatter(self.data_[:,0], self.data_[:,1], self.data_[:,2], s=30, c=self.FE_points_, alpha=0.8, cmap=my_cmap, vmin=0, vmax=vmax, edgecolor='k')
+			
+			ax.set_ylim([self.coords_[1].min(), self.coords_[1].max()])
+			ax.set_zlim([self.coords_[2].min(), self.coords_[2].max()])
+			
+			cb=plt.colorbar(sc,label='[kcal/mol]')
+			text = cb.ax.yaxis.label
+			font = matplotlib.font_manager.FontProperties(size=fontsize-3,family='serif',weight='light')
+			text.set_font_properties(font)
+			cb.ax.tick_params(labelsize=fontsize-2)
+			
+			ax.set_ylabel(ylabel, fontsize=fontsize - 2,fontname='serif',fontweight='light')
+			ax.set_zlabel(zlabel, fontsize=fontsize - 2,fontname='serif',fontweight='light')
+		
 		ax.set_xlim([self.coords_[0].min(), self.coords_[0].max()])
 		
 		# Plot projected data points
-		if show_data:
+		if show_data and self.n_dims_ < 3:
 
 			# Plot projected data points
 			if self.labels_ is not None:
@@ -580,9 +601,9 @@ class FreeEnergyClustering(object):
 					plt.legend(fontsize=fontsize-4,facecolor=[0.9,0.9,0.92])
 			else:
 				if self.n_dims_ > 1:
-					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=[0.67, 0.67, 0.65])
+					ax.scatter(self.data_[:, 0], self.data_[:, 1], s=30, c=[0.67, 0.67, 0.65],alpha=0.5)
 				else:
-					ax.scatter(self.data_, self.FE_points_[:, 1], s=30, c=[0.67, 0.67, 0.65])
+					ax.scatter(self.data_, self.FE_points_[:, 1], s=30, c=[0.67, 0.67, 0.65],alpha=0.5)
 
 			# Plot minimum pathways between states
 			if self.pathways_ is not None and self.n_dims_ > 1:
