@@ -10,4 +10,3 @@ See tutorial for more information and references.
 
 ----------------------------------------------------------
 Annie Westerlund, KTH Royal Institute of Technology, 2019 </br>
-annie.westerlund@gmail.com 
