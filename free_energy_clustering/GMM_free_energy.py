@@ -65,6 +65,8 @@ class FreeEnergyClustering(object):
 		self.verbose_ = verbose
 		self.data_weights_ = data_weights
 		self.bias_factors_ = bias_factors
+
+		self.BICs_ = []
 		
 		if data_weights is not None or bias_factors is not None:
 			use_data_weights = True
@@ -93,15 +95,21 @@ class FreeEnergyClustering(object):
 		return
 
 	def _get_grid_coords(self):
-		x = []
-		self.n_grids_ = []
-		for i_dim in range(self.n_dims_):
-			self.n_grids_.append(self.nx_)
-			x.append(np.linspace(self.x_lims_[i_dim][0], self.x_lims_[i_dim][1], self.nx_))
-		
-		if self.n_dims_ == 1:
-			return x
-		coords = np.meshgrid(*x)
+		if self.n_dims_ < 4:
+			x = []
+			self.n_grids_ = []
+			for i_dim in range(self.n_dims_):
+				self.n_grids_.append(self.nx_)
+				x.append(np.linspace(self.x_lims_[i_dim][0], self.x_lims_[i_dim][1], self.nx_))
+
+			if self.n_dims_ == 1:
+				return x
+			coords = np.meshgrid(*x)
+		else:
+			# Do not discretize
+			print('Note: # features > 3 => density not evaluated on grid.')
+			coords = None
+
 		return coords
 
 	def _density_landscape(self, density_est):
@@ -116,18 +124,18 @@ class FreeEnergyClustering(object):
 		if self.n_dims_ == 1:
 			densities = density_est.density(coords[0][:,np.newaxis])
 			return coords, densities
-		
-		densities = np.zeros(self.n_grids_)
-		
-		print('Density grid shape: '+str(densities.shape))
-		grid_points_flatten = []
-		for x in coords:
-			grid_points_flatten.append(np.ravel(x))
-		points = np.asarray(grid_points_flatten).T
-		
-		densities = density_est.density(points)
-		densities = np.reshape(densities, self.n_grids_)
-		
+
+		if coords is not None:
+			print('Density grid shape: '+str(self.n_grids_))
+			grid_points_flatten = []
+			for x in coords:
+				grid_points_flatten.append(np.ravel(x))
+			points = np.asarray(grid_points_flatten).T
+			densities = density_est.density(points)
+			densities = np.reshape(densities, self.n_grids_)
+		else:
+			densities = density_est.density(self.data_)
+
 		return coords, densities
 
 	def _free_energy(self,density):
@@ -341,6 +349,7 @@ class FreeEnergyClustering(object):
 						density_est.covariances_ = gmm.covariances_
 			else:
 				ICs = np.asarray(ICs)
+				self.BICs_ = np.copy(ICs)
 				model_ind = ICs.argmin()
 				gmm = list_of_GMMs[model_ind]
 				best_n_components = gmm.weights_.shape[0]
@@ -455,7 +464,7 @@ class FreeEnergyClustering(object):
 		self.transition_matrix_ = transition_matrix
 
 		print('Clustering free energy landscape...')
-		self.cl_ = FEC.LandscapeClustering(self.stack_landscapes_)
+		self.cl_ = FEC.LandscapeClustering(self.stack_landscapes_,verbose=self.verbose_)
 		
 		if eval_points is not None and unravel_grid:
 			tmp_points = []
@@ -466,6 +475,7 @@ class FreeEnergyClustering(object):
 		if len(points.shape) == 1:
 			points = points[:,np.newaxis]
 		
+
 		if eval_points is not None:
 			if len(eval_points.shape) == 1:
 				eval_points = eval_points[:,np.newaxis]
@@ -512,7 +522,7 @@ class FreeEnergyClustering(object):
 		return
 
 	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', zlabel='z', vmax=7.5,
-				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape'):
+				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape', dx=1):
 
 		if self.n_dims_ > 3:
 			print('Plotting does not support > 3 dimensions')
@@ -566,7 +576,7 @@ class FreeEnergyClustering(object):
 			plt.plot(self.coords_[0], FE_landscape, linewidth=3,color='k',zorder=1)
 			plt.ylabel('Free energy [kcal/mol]',fontsize=fontsize-2,fontname='serif',fontweight='light')
 		else:
-			sc = ax.scatter(self.data_[:,0], self.data_[:,1], self.data_[:,2], s=30, c=self.FE_points_, alpha=0.8, cmap=my_cmap, vmin=0, vmax=vmax, edgecolor='k')
+			sc = ax.scatter(self.data_[::dx,0], self.data_[::dx,1], self.data_[::dx,2], s=30, c=self.FE_points_[::dx], alpha=0.8, cmap=my_cmap, vmin=0, vmax=vmax, edgecolor='k')
 			
 			ax.set_ylim([self.coords_[1].min(), self.coords_[1].max()])
 			ax.set_zlim([self.coords_[2].min(), self.coords_[2].max()])
@@ -588,8 +598,11 @@ class FreeEnergyClustering(object):
 			# Plot projected data points
 			if self.labels_ is not None:
 				if self.n_dims_ > 1:
-					ax.scatter(self.data_[self.labels_==0, 0], self.data_[self.labels_==0, 1], s=30, c=[0.67, 0.67, 0.65],alpha=0.5)
-					ax.scatter(self.data_[self.labels_>0, 0], self.data_[self.labels_>0, 1], s=80, c=self.labels_[self.labels_>0],
+					transition_points=self.data_[self.labels_==0]
+					core_points = self.data_[self.labels_ > 0]
+					core_labels = self.labels_[self.labels_>0]
+					ax.scatter(transition_points[::dx, 0], transition_points[::dx, 1], s=30, c=0.67*np.ones((transition_points[::dx].shape[0],3)),alpha=0.5)
+					ax.scatter(core_points[::dx, 0], core_points[::dx, 1], s=80, c=core_labels[::dx],
 						   edgecolor='k', cmap=my_cmap, label='Intermediate state',alpha=0.8)
 				else:
 					ax.scatter(self.data_[self.labels_==0], self.FE_points_[self.labels_==0], s=30, c=[0.67, 0.67, 0.65],alpha=0.6,zorder=3)

@@ -109,7 +109,7 @@ class ClusterDensity(object):
 		if transition_matrix is None:
 			graph = self._construct_components(cdist(self.grid_points_,self.grid_points_), is_FE_min)
 		else:
-			print('Using transition probabilities as distances.')
+			print('Using transition probabilities to define distances.')
 			graph = self._construct_components(transition_matrix, is_FE_min, use_transition_matrix=True)
 		
 		print('# Graph connections: '+str(np.sum(graph)))

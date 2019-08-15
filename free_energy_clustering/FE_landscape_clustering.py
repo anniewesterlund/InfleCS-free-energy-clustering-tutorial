@@ -7,11 +7,12 @@ from scipy.stats import multivariate_normal
 
 class LandscapeClustering():
 
-	def __init__(self, ensemble_of_GMMs=False):
+	def __init__(self, ensemble_of_GMMs=False, verbose=True):
 		self.cluster_centers_ = None
 		self.labels_ = None
 		self.ensemble_of_GMMs = ensemble_of_GMMs
 		self.clusterer_ = None
+		self.verbose_ = verbose
 		return
 	
 	def get_cluster_representative(self, x, labels, free_energies):
@@ -45,6 +46,9 @@ class LandscapeClustering():
 		:return:
 		"""
 		print("Assigning cluster indices to non-core cluster points.")
+		if np.sum(cluster_indices) == 0: # If all points are marked as transition points
+			return cluster_indices+1
+
 		cl_inds_final = np.copy(cluster_indices)
 		transition_point_inds = np.where(cluster_indices==0)[0]
 		n_assigned = np.sum(cluster_indices>0)
@@ -199,8 +203,9 @@ class LandscapeClustering():
 			print('Computing Hessians of density landscape.')
 
 		for i_point, x in enumerate(points):
-			sys.stdout.write("\r"+'Point: '+str(i_point+1)+'/'+str(points.shape[0]))
-			sys.stdout.flush()
+			if self.verbose_:
+				sys.stdout.write("\r"+'Point: '+str(i_point+1)+'/'+str(points.shape[0]))
+				sys.stdout.flush()
 			if self.ensemble_of_GMMs:
 				hessian = np.zeros((n_dims,n_dims))
 				for i_model in range(n_models):
@@ -228,7 +233,8 @@ class LandscapeClustering():
 				# Check: if Hessian is negative definite => the point is at a density maximum
 				if eigvals.max() < 0.0:
 					is_FE_min[i_point] = True
-		print()
+		if self.verbose_:
+			print()
 		return is_FE_min
 
 	def cluster(self, density_models, points, eval_points=None, use_FE_landscape=False, transition_matrix=None):
