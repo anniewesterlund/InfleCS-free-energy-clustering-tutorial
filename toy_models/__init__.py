@@ -2,6 +2,7 @@ from toy_models.toy_model_GMM_2D import GMM2D
 from toy_models.toy_model_nonlinear_GMM_2D import GMM2dNonlinear
 from toy_models.evaluate_toy_models import MethodEvaluator
 from toy_models.toy_model_multiple_GMMs import MultipleGMMs
+from toy_models.toy_model_blobs import Blobs
 from toy_models.toy_model_moons import Moons
 from toy_models.toy_model_digits import Digits
 from toy_models.toy_model_GMM_1D_temperature_replicas import TemperatureReplicaDoubleWell
