@@ -10,6 +10,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+import copy
+
 class FreeEnergyClustering(object):
 
 	def __init__(self, data, min_n_components=8, max_n_components=None, n_components_step=1, x_lims=None, temperature=300.0,
@@ -522,14 +524,16 @@ class FreeEnergyClustering(object):
 		return
 
 	def visualize(self,title="Free energy landscape", fontsize=30, savefig=True, xlabel='x', ylabel='y', zlabel='z', vmax=7.5,
-				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape', dx=1, ax=None):
+				  n_contour_levels=15, show_data=False, figsize= [12, 10], filename='free_energy_landscape', dx=1, ax=None, cmap=None):
 
 		if self.n_dims_ > 3:
 			print('Plotting does not support > 3 dimensions')
 			return
 		
 		# Set custom colormaps
-		my_cmap = matplotlib.cm.get_cmap('jet')
+		if cmap == None: my_cmap = copy.copy(matplotlib.cm.get_cmap('viridis'))
+		else: my_cmap = copy.copy(cmap)
+
 		my_cmap.set_over('white')
 		my_cmap_cont = matplotlib.colors.ListedColormap(['black'])
 		my_cmap_cont.set_over('white')
@@ -639,10 +643,10 @@ class FreeEnergyClustering(object):
 			if self.cluster_centers_ is not None:
 				if self.n_dims_ > 1:
 					ax.scatter(self.data_[self.cluster_centers_,0], self.data_[self.cluster_centers_,1], marker='s', s=120,
-						   linewidth=4, facecolor='',edgecolor='w', label='Cluster center')
+						   linewidth=4, facecolor='none',edgecolor='w', label='Cluster center')
 				else:
 					ax.scatter(self.data_[self.cluster_centers_], self.FE_points_[self.cluster_centers_], marker='s', s=120,
-						   linewidth=4, facecolor='',edgecolor='w', label='Cluster center',zorder=5)					
+						   linewidth=4, facecolor='none',edgecolor='w', label='Cluster center',zorder=5)					
 				if fontsize > 18:
 					plt.legend(fontsize=fontsize-10,facecolor=[0.9,0.9,0.92])
 				else:
@@ -655,7 +659,8 @@ class FreeEnergyClustering(object):
 
 		if savefig:
 			plt.savefig(filename + '.svg')
-			plt.savefig(filename + '.eps')
+			#plt.savefig(filename + '.eps')
 			plt.savefig(filename + '.png')
+			plt.sacefig(filename + ".pdf")
 
 		return
